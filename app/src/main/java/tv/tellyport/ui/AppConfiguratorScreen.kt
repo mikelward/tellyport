@@ -140,47 +140,106 @@ fun AppConfiguratorScreen(
             .padding(horizontal = 28.dp, vertical = 20.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        // Header bar
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(14.dp)
-            ) {
-                TellyportSecondaryButton(
-                    text = "Back",
-                    icon = Icons.AutoMirrored.Rounded.ArrowBack,
-                    onClick = onBack
-                )
-                Column {
-                    Text(
-                        text = "App Routing Configurator",
-                        color = TellyportColors.TextPrimary,
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = "$mappedCount of ${allEntries.size} apps mapped • Scroll or type to fuzzy-filter, then pick a VPN / country profile",
-                        color = TellyportColors.TextSecondary,
-                        fontSize = 13.sp
-                    )
-                }
-            }
+        // Header bar (single row with weighted title on TV/tablet, stacked actions on portrait phone)
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+            val isWideHeader = maxWidth >= 680.dp
+            if (isWideHeader) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        TellyportSecondaryButton(
+                            text = "Back",
+                            icon = Icons.AutoMirrored.Rounded.ArrowBack,
+                            onClick = onBack
+                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "App Routing Configurator",
+                                color = TellyportColors.TextPrimary,
+                                fontSize = 24.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = "$mappedCount of ${allEntries.size} apps mapped • Scroll or type to fuzzy-filter, then pick a VPN / country profile",
+                                color = TellyportColors.TextSecondary,
+                                fontSize = 13.sp,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
 
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                TellyportSecondaryButton(
-                    text = "Refresh Apps",
-                    icon = Icons.Rounded.Refresh,
-                    onClick = onRefreshApps
-                )
-                TellyportPrimaryButton(
-                    text = "New Profile",
-                    icon = Icons.Rounded.Add,
-                    onClick = onCreateProfile
-                )
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        TellyportSecondaryButton(
+                            text = "Refresh Apps",
+                            icon = Icons.Rounded.Refresh,
+                            onClick = onRefreshApps
+                        )
+                        TellyportPrimaryButton(
+                            text = "New Profile",
+                            icon = Icons.Rounded.Add,
+                            onClick = onCreateProfile
+                        )
+                    }
+                }
+            } else {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        TellyportSecondaryButton(
+                            text = "Back",
+                            icon = Icons.AutoMirrored.Rounded.ArrowBack,
+                            onClick = onBack
+                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "App Routing Configurator",
+                                color = TellyportColors.TextPrimary,
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = "$mappedCount of ${allEntries.size} apps mapped",
+                                color = TellyportColors.TextSecondary,
+                                fontSize = 12.sp
+                            )
+                        }
+                    }
+
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        TellyportSecondaryButton(
+                            text = "Refresh Apps",
+                            icon = Icons.Rounded.Refresh,
+                            onClick = onRefreshApps
+                        )
+                        TellyportPrimaryButton(
+                            text = "New Profile",
+                            icon = Icons.Rounded.Add,
+                            onClick = onCreateProfile
+                        )
+                    }
+                }
             }
         }
 
