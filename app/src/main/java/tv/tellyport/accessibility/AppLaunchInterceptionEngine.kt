@@ -51,6 +51,7 @@ class AppLaunchInterceptionEngine(
     private val coordinator: ProfileActivationCoordinator,
     private val forceStopper: PackageForceStopper,
     private val performGlobalHomeAction: () -> Boolean,
+    private val showToast: (String) -> Unit = {},
     private val clockElapsedMs: () -> Long = { System.currentTimeMillis() },
     private val relaunchDebounceMs: Long = DEFAULT_RELAUNCH_DEBOUNCE_MS,
     private val additionalLauncherPackages: Set<String> = emptySet()
@@ -58,6 +59,9 @@ class AppLaunchInterceptionEngine(
     private val interceptionMutex = Mutex()
     private val recentRelaunchTimestamps = mutableMapOf<String, Long>()
     private var homeDisconnectJob: Job? = null
+
+    @Volatile
+    private var lastForegroundPackage: String? = null
 
     private val _lastInterceptedSummary = MutableStateFlow<String?>(null)
     val lastInterceptedSummary: StateFlow<String?> = _lastInterceptedSummary.asStateFlow()
@@ -83,6 +87,7 @@ class AppLaunchInterceptionEngine(
 
         // Handle returning to the Google TV / Android TV Home Launcher.
         if (isHomeLauncher(packageName)) {
+            lastForegroundPackage = packageName
             scheduleHomeAutoDisconnectIfEnabled()
             return InterceptionOutcome.HomeGraceTimerScheduled
         }
@@ -90,12 +95,17 @@ class AppLaunchInterceptionEngine(
         // User entered a real foreground app; cancel any pending Home auto-disconnect timer.
         cancelHomeAutoDisconnectTimer()
 
+        val previousPackage = lastForegroundPackage
         val profiles = profilesProvider()
         val matchedProfile = ProfileRepository.findProfileForPackage(profiles, packageName)
-            ?: return InterceptionOutcome.Ignored
+        if (matchedProfile == null) {
+            lastForegroundPackage = packageName
+            return InterceptionOutcome.Ignored
+        }
 
         // Unconfigured profiles cannot be auto-switched; allow normal launch rather than blocking.
         if (matchedProfile.vpnBackend == VpnBackend.UNCONFIGURED) {
+            lastForegroundPackage = packageName
             return InterceptionOutcome.Ignored
         }
 
@@ -105,6 +115,7 @@ class AppLaunchInterceptionEngine(
             recentRelaunchTimestamps[packageName]
         }
         if (lastRelaunch != null && (now - lastRelaunch) < relaunchDebounceMs) {
+            lastForegroundPackage = packageName
             return InterceptionOutcome.Debounced
         }
 
@@ -120,12 +131,20 @@ class AppLaunchInterceptionEngine(
                 recentRelaunchTimestamps[packageName]
             }
             if (lockedLastRelaunch != null && (lockedNow - lockedLastRelaunch) < relaunchDebounceMs) {
+                lastForegroundPackage = packageName
                 return InterceptionOutcome.Debounced
             }
 
             if (coordinator.isProfileCurrentlySatisfied(matchedProfile)) {
+                lastForegroundPackage = packageName
+                if (previousPackage != packageName) {
+                    showToast("Already connected to ${matchedProfile.name}")
+                }
                 return InterceptionOutcome.AlreadySatisfied
             }
+
+            // Notify user on screen before returning home & switching regions.
+            showToast("Connecting to ${matchedProfile.name}...")
 
             // 1. Return to Home so the app does not render in the wrong region.
             performGlobalHomeAction()
@@ -148,6 +167,13 @@ class AppLaunchInterceptionEngine(
             // Refresh debounce timestamp after activation finishes so immediate window transitions are debounced.
             synchronized(recentRelaunchTimestamps) {
                 recentRelaunchTimestamps[packageName] = clockElapsedMs()
+            }
+
+            if (progress is ActivationProgress.Warning) {
+                showToast(progress.message)
+                lastForegroundPackage = null
+            } else {
+                lastForegroundPackage = packageName
             }
 
             _lastInterceptedSummary.value = "Intercepted $packageName → ${matchedProfile.name}"
