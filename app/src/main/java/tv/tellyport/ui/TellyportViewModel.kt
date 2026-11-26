@@ -7,6 +7,7 @@ import android.content.Intent
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
@@ -45,8 +46,12 @@ data class InstalledTvApp(
 
 sealed class TellyportDestination {
     data object Dashboard : TellyportDestination()
+    data object AppConfigurator : TellyportDestination()
     data object Diagnostics : TellyportDestination()
-    data class ProfileEditor(val editingProfile: RegionalProfile?) : TellyportDestination()
+    data class ProfileEditor(
+        val editingProfile: RegionalProfile?,
+        val returnTo: TellyportDestination = Dashboard
+    ) : TellyportDestination()
 }
 
 data class TellyportUiState(
@@ -69,6 +74,7 @@ data class TellyportUiState(
         isPermissionGranted = false
     ),
     val installedApps: List<InstalledTvApp> = emptyList(),
+    val isLoadingInstalledApps: Boolean = false,
     val activationProgress: ActivationProgress = ActivationProgress.Idle,
     val destination: TellyportDestination = TellyportDestination.Dashboard,
     val bannerMessage: String? = null
@@ -92,17 +98,21 @@ class TellyportViewModel(
     },
     private val loadInstalledApps: suspend () -> List<InstalledTvApp> = {
         queryInstalledLaunchableApps(appContext)
-    }
+    },
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) : ViewModel() {
 
     private val _permissionStatus = MutableStateFlow(permissionStatusProvider())
     private val _shizukuStatus = MutableStateFlow(shizukuStatusProvider())
     private val _installedApps = MutableStateFlow<List<InstalledTvApp>>(emptyList())
+    private val _isLoadingInstalledApps = MutableStateFlow(false)
     private val _destination = MutableStateFlow<TellyportDestination>(TellyportDestination.Dashboard)
     private val _bannerMessage = MutableStateFlow<String?>(null)
 
     private var activationJob: Job? = null
     private var activatingProfileId: String? = null
+    private var installedAppsLoadJob: Job? = null
+    private var installedAppsLoadSeq: Long = 0L
 
     private val runtimeFlows = combine(
         profileRepository.store,
@@ -127,10 +137,10 @@ class TellyportViewModel(
     val uiState: StateFlow<TellyportUiState> = combine(
         runtimeFlows,
         _shizukuStatus,
-        _installedApps,
+        combine(_installedApps, _isLoadingInstalledApps) { apps, loading -> apps to loading },
         AccessibilityServiceState.isConnected,
         combine(_destination, _bannerMessage) { dest, banner -> dest to banner }
-    ) { base, shizuku, apps, accessibilityBound, navAndBanner ->
+    ) { base, shizuku, appsAndLoading, accessibilityBound, navAndBanner ->
         val updatedPerms = if (accessibilityBound && !base.permissionStatus.isAccessibilityEnabled) {
             base.permissionStatus.copy(isAccessibilityEnabled = true)
         } else {
@@ -139,7 +149,8 @@ class TellyportViewModel(
         base.copy(
             permissionStatus = updatedPerms,
             shizukuStatus = shizuku,
-            installedApps = apps,
+            installedApps = appsAndLoading.first,
+            isLoadingInstalledApps = appsAndLoading.second,
             destination = navAndBanner.first,
             bannerMessage = navAndBanner.second
         )
@@ -165,19 +176,52 @@ class TellyportViewModel(
         vpnNetworkMonitor.refreshState()
     }
 
+    fun openAppConfigurator() {
+        _bannerMessage.value = null
+        refreshInstalledApps()
+        _destination.value = TellyportDestination.AppConfigurator
+    }
+
+    fun refreshInstalledApps() {
+        refreshInstalledAppsAsync()
+    }
+
     fun openDiagnostics() {
         refreshDiagnostics()
         _destination.value = TellyportDestination.Diagnostics
     }
 
-    fun openCreateProfile() {
+    fun openCreateProfile(returnTo: TellyportDestination = TellyportDestination.Dashboard) {
         refreshInstalledAppsAsync()
-        _destination.value = TellyportDestination.ProfileEditor(editingProfile = null)
+        _destination.value = TellyportDestination.ProfileEditor(
+            editingProfile = null,
+            returnTo = returnTo
+        )
     }
 
-    fun openEditProfile(profile: RegionalProfile) {
+    fun openEditProfile(
+        profile: RegionalProfile,
+        returnTo: TellyportDestination = TellyportDestination.Dashboard
+    ) {
         refreshInstalledAppsAsync()
-        _destination.value = TellyportDestination.ProfileEditor(editingProfile = profile)
+        _destination.value = TellyportDestination.ProfileEditor(
+            editingProfile = profile,
+            returnTo = returnTo
+        )
+    }
+
+    fun navigateBack() {
+        when (val current = _destination.value) {
+            is TellyportDestination.ProfileEditor -> {
+                if (current.returnTo == TellyportDestination.AppConfigurator) {
+                    _destination.value = TellyportDestination.AppConfigurator
+                } else {
+                    navigateToDashboard()
+                }
+            }
+            TellyportDestination.Dashboard -> Unit
+            else -> navigateToDashboard()
+        }
     }
 
     fun navigateToDashboard() {
@@ -187,6 +231,31 @@ class TellyportViewModel(
 
     fun dismissBannerMessage() {
         _bannerMessage.value = null
+    }
+
+    fun assignAppToProfile(
+        packageName: String,
+        appLabel: String,
+        targetProfileId: String?
+    ) {
+        viewModelScope.launch {
+            val updated = profileRepository.assignPackageToProfile(packageName, targetProfileId)
+            if (!updated) {
+                _bannerMessage.value = "Could not update routing for $appLabel."
+                return@launch
+            }
+            val displayLabel = appLabel.trim().ifEmpty { packageName }
+            if (targetProfileId == null) {
+                _bannerMessage.value = "$displayLabel set to Direct (No VPN)."
+            } else {
+                val profile = profileRepository.getProfilesSnapshot().firstOrNull { it.id == targetProfileId }
+                _bannerMessage.value = if (profile != null) {
+                    "$displayLabel → ${profile.name} (${profile.regionCode} • ${profile.vpnBackend.displayName})"
+                } else {
+                    "Updated routing for $displayLabel."
+                }
+            }
+        }
     }
 
     fun activateProfile(profile: RegionalProfile) {
@@ -232,13 +301,15 @@ class TellyportViewModel(
     }
 
     fun saveProfile(profile: RegionalProfile, updatedWgRemoteControlKey: String? = null) {
+        val returnDestination = (_destination.value as? TellyportDestination.ProfileEditor)?.returnTo
+            ?: TellyportDestination.Dashboard
         viewModelScope.launch {
             try {
                 if (updatedWgRemoteControlKey != null) {
                     profileRepository.setWgRemoteControlKey(updatedWgRemoteControlKey)
                 }
                 profileRepository.upsertProfile(profile)
-                _destination.value = TellyportDestination.Dashboard
+                _destination.value = returnDestination
                 _bannerMessage.value = "Saved profile \"${profile.name}\"."
             } catch (ex: SingleTailscaleConstraintException) {
                 _bannerMessage.value = ProfileRepository.SINGLE_TAILSCALE_MESSAGE
@@ -391,9 +462,20 @@ class TellyportViewModel(
     }
 
     private fun refreshInstalledAppsAsync() {
-        viewModelScope.launch {
-            val apps = withContext(Dispatchers.IO) { loadInstalledApps() }
-            _installedApps.value = apps
+        val seq = ++installedAppsLoadSeq
+        installedAppsLoadJob?.cancel()
+        installedAppsLoadJob = viewModelScope.launch {
+            _isLoadingInstalledApps.value = true
+            try {
+                val apps = withContext(ioDispatcher) { loadInstalledApps() }
+                if (installedAppsLoadSeq == seq) {
+                    _installedApps.value = apps
+                }
+            } finally {
+                if (installedAppsLoadSeq == seq) {
+                    _isLoadingInstalledApps.value = false
+                }
+            }
         }
     }
 

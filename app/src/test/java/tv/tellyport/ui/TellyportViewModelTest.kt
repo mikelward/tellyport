@@ -11,6 +11,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.resetMain
@@ -277,6 +278,99 @@ class TellyportViewModelTest {
             assertEquals(null, repository.getActiveSessionSnapshot())
             assertEquals(3, repository.profiles.first().size)
         } finally {
+            storeJob.cancelAndJoin()
+        }
+    }
+
+    @Test
+    fun appConfigurator_assignsReassignsUnassignsAppsAndReturnsFromEditor() = runTest(testDispatcher) {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val storeJob = SupervisorJob()
+        val storeScope = CoroutineScope(storeJob + testDispatcher)
+        val dataStore = DataStoreFactory.create(
+            serializer = ProfileStoreSerializer,
+            scope = storeScope,
+            produceFile = { tempFolder.root.resolve("vm_app_configurator.json") }
+        )
+        val repository = ProfileRepository(dataStore)
+        val dispatcher = FakeIntentDispatcher()
+        val vpnController = VpnController(dispatcher)
+        val vpnState = MutableStateFlow(VpnConnectionState(isConnected = false))
+        val mockStatus = MutableStateFlow(MockLocationStatus())
+
+        val coordinator = ProfileActivationCoordinator(
+            vpnController = vpnController,
+            vpnStateFlow = vpnState,
+            mockLocationStatusFlow = mockStatus,
+            startMockLocation = { _, _ -> },
+            stopMockLocation = {}
+        )
+
+        val readyPermissions = MockLocationPermissionStatus(
+            isMockLocationAppSelected = true,
+            hasFineLocationPermission = true,
+            hasNotificationPermission = true,
+            adbCommand = MockLocationPermissionChecker.buildAdbMockLocationCommand("tv.tellyport")
+        )
+
+        val fakeApps = listOf(
+            InstalledTvApp("Netflix", "com.netflix.ninja"),
+            InstalledTvApp("BBC iPlayer", "uk.co.bbc.iplayer")
+        )
+
+        val viewModel = TellyportViewModel(
+            appContext = context,
+            profileRepository = repository,
+            vpnController = vpnController,
+            vpnNetworkMonitor = VpnNetworkMonitor(context),
+            permissionChecker = MockLocationPermissionChecker(context),
+            shizukuForceStopper = ShizukuForceStopper(context),
+            coordinator = coordinator,
+            vpnStateFlow = vpnState,
+            mockLocationStatusFlow = mockStatus,
+            permissionStatusProvider = { readyPermissions },
+            shizukuStatusProvider = { ShizukuStatus(false, false, false) },
+            loadInstalledApps = { fakeApps },
+            ioDispatcher = testDispatcher
+        )
+
+        val collectorJob = backgroundScope.launch { viewModel.uiState.collect {} }
+        try {
+            runCurrent()
+            viewModel.openAppConfigurator()
+            runCurrent()
+            assertEquals(TellyportDestination.AppConfigurator, viewModel.uiState.value.destination)
+            assertEquals(fakeApps, viewModel.uiState.value.installedApps)
+
+            // Assign Netflix to Sydney, then move to London, then set to Direct (null).
+            viewModel.assignAppToProfile("com.netflix.ninja", "Netflix", "preset-sydney")
+            runCurrent()
+            assertEquals("preset-sydney", repository.findProfileForPackage("com.netflix.ninja")?.id)
+
+            viewModel.assignAppToProfile("com.netflix.ninja", "Netflix", "preset-london")
+            runCurrent()
+            assertEquals("preset-london", repository.findProfileForPackage("com.netflix.ninja")?.id)
+            assertTrue(
+                repository.profiles.first().first { it.id == "preset-sydney" }.mappedPackages.none {
+                    it == "com.netflix.ninja"
+                }
+            )
+
+            viewModel.assignAppToProfile("com.netflix.ninja", "Netflix", null)
+            runCurrent()
+            assertEquals(null, repository.findProfileForPackage("com.netflix.ninja"))
+
+            // Opening ProfileEditor from AppConfigurator and pressing back returns to AppConfigurator.
+            val london = repository.profiles.first().first { it.id == "preset-london" }
+            viewModel.openEditProfile(london, returnTo = TellyportDestination.AppConfigurator)
+            runCurrent()
+            assertTrue(viewModel.uiState.value.destination is TellyportDestination.ProfileEditor)
+
+            viewModel.navigateBack()
+            runCurrent()
+            assertEquals(TellyportDestination.AppConfigurator, viewModel.uiState.value.destination)
+        } finally {
+            collectorJob.cancel()
             storeJob.cancelAndJoin()
         }
     }

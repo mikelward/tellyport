@@ -128,6 +128,39 @@ class ProfileRepositoryTest {
     }
 
     @Test
+    fun assignPackageToProfile_enforcesSingleProfileOwnershipMovesAndUnmapsCleanly() = runTest {
+        val job = SupervisorJob()
+        val scope = CoroutineScope(job + Dispatchers.IO)
+        try {
+            val repo = createRepository("assign_package.json", scope)
+            repo.ensureSeeded()
+
+            // Assign a new app to New York.
+            assertTrue(repo.assignPackageToProfile("com.netflix.ninja", "preset-ny"))
+            assertEquals("preset-ny", repo.findProfileForPackage("com.netflix.ninja")?.id)
+
+            // Reassign the same app to London -> atomically removed from New York.
+            assertTrue(repo.assignPackageToProfile("com.netflix.ninja", "preset-london"))
+            val profilesAfterMove = repo.profiles.first()
+            assertFalse(profilesAfterMove.first { it.id == "preset-ny" }.mappedPackages.contains("com.netflix.ninja"))
+            assertTrue(profilesAfterMove.first { it.id == "preset-london" }.mappedPackages.contains("com.netflix.ninja"))
+
+            // Invalid profile ID returns false without removing existing assignment.
+            assertFalse(repo.assignPackageToProfile("com.netflix.ninja", "does-not-exist"))
+            assertEquals("preset-london", repo.findProfileForPackage("com.netflix.ninja")?.id)
+
+            // Unassign (null) removes it from all profiles (Direct / No VPN).
+            assertTrue(repo.assignPackageToProfile("com.netflix.ninja", null))
+            assertNull(repo.findProfileForPackage("com.netflix.ninja"))
+
+            // Blank package name is rejected cleanly.
+            assertFalse(repo.assignPackageToProfile("   ", "preset-ny"))
+        } finally {
+            job.cancelAndJoin()
+        }
+    }
+
+    @Test
     fun activeSessionAutoDisconnectBootDiagnosticsAndProfiles_persistAcrossRestarts() = runTest {
         val fileName = "full_roundtrip.json"
 

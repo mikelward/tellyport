@@ -213,14 +213,79 @@ class ProfileRepository(
                 }
             }
 
-            val index = baseList.indexOfFirst { it.id == normalized.id }
-            val updated = if (index >= 0) {
-                baseList.toMutableList().apply { set(index, normalized) }
+            val claimedPackages = normalized.mappedPackages.toSet()
+            val cleanedBase = if (claimedPackages.isEmpty()) {
+                baseList
             } else {
-                baseList + normalized
+                baseList.map { existing ->
+                    if (existing.id == normalized.id) {
+                        existing
+                    } else if (existing.mappedPackages.any { it in claimedPackages }) {
+                        existing.copy(mappedPackages = existing.mappedPackages.filterNot { it in claimedPackages })
+                    } else {
+                        existing
+                    }
+                }
+            }
+
+            val index = cleanedBase.indexOfFirst { it.id == normalized.id }
+            val updated = if (index >= 0) {
+                cleanedBase.toMutableList().apply { set(index, normalized) }
+            } else {
+                cleanedBase + normalized
             }
             current.copy(schemaVersion = 2, initialized = true, profiles = updated)
         }
+    }
+
+    /**
+     * Atomically assigns [packageName] to a single profile ([targetProfileId]), or unmaps it
+     * from all profiles when [targetProfileId] is `null`.
+     *
+     * Guarantees a package belongs to at most one profile at any time. If a non-null
+     * [targetProfileId] does not exist in the store, leaves existing mappings untouched and
+     * returns `false`.
+     */
+    suspend fun assignPackageToProfile(
+        packageName: String,
+        targetProfileId: String?
+    ): Boolean {
+        val targetPkg = packageName.trim()
+        if (targetPkg.isEmpty()) return false
+
+        var updatedSuccessfully = false
+        dataStore.updateData { current ->
+            val baseList = if (!current.initialized) {
+                ProfilePresets.defaultProfiles()
+            } else {
+                current.profiles
+            }
+
+            if (targetProfileId != null && baseList.none { it.id == targetProfileId }) {
+                updatedSuccessfully = false
+                return@updateData current
+            }
+
+            val updatedProfiles = baseList.map { profile ->
+                if (profile.id == targetProfileId) {
+                    if (targetPkg in profile.mappedPackages) {
+                        profile
+                    } else {
+                        profile.copy(mappedPackages = profile.mappedPackages + targetPkg)
+                    }
+                } else {
+                    val withoutPkg = profile.mappedPackages.filterNot { it == targetPkg }
+                    if (withoutPkg.size != profile.mappedPackages.size) {
+                        profile.copy(mappedPackages = withoutPkg)
+                    } else {
+                        profile
+                    }
+                }
+            }
+            updatedSuccessfully = true
+            current.copy(schemaVersion = 2, initialized = true, profiles = updatedProfiles)
+        }
+        return updatedSuccessfully
     }
 
     /**
