@@ -17,6 +17,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Save
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -30,13 +31,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Text
 import tv.tellyport.data.ProfilePresets
+import tv.tellyport.data.ProfileRepository
 import tv.tellyport.data.RegionalProfile
 import tv.tellyport.data.VpnBackend
 import tv.tellyport.ui.components.TellyportPrimaryButton
@@ -49,6 +52,8 @@ import java.util.UUID
 @Composable
 fun ProfileEditorScreen(
     existingProfile: RegionalProfile?,
+    allProfiles: List<RegionalProfile>,
+    installedApps: List<InstalledTvApp>,
     currentWgRemoteControlKey: String,
     onSave: (RegionalProfile, String?) -> Unit,
     onCancel: () -> Unit
@@ -68,21 +73,27 @@ fun ProfileEditorScreen(
         mutableStateOf((existingProfile?.accuracyMeters ?: 5.0f).toString())
     }
     var vpnBackend by remember(existingProfile) {
-        mutableStateOf(existingProfile?.vpnBackend ?: VpnBackend.TAILSCALE)
+        mutableStateOf(existingProfile?.vpnBackend ?: VpnBackend.UNCONFIGURED)
     }
-    var vpnTunnelOrNodeName by remember(existingProfile) {
-        mutableStateOf(existingProfile?.vpnTunnelOrNodeName ?: "")
+    var tunnelName by remember(existingProfile) {
+        mutableStateOf(existingProfile?.tunnelName ?: "")
     }
     var wgRemoteControlKey by remember(currentWgRemoteControlKey) {
         mutableStateOf(currentWgRemoteControlKey)
     }
-    var targetAppPackage by remember(existingProfile) {
-        mutableStateOf(existingProfile?.targetAppPackage ?: "")
+    var mappedPackages by remember(existingProfile) {
+        mutableStateOf(existingProfile?.mappedPackages ?: emptyList())
     }
+    var customPackageInput by remember { mutableStateOf("") }
     var autoLaunchApp by remember(existingProfile) {
         mutableStateOf(existingProfile?.autoLaunchApp ?: true)
     }
     var validationError by remember { mutableStateOf<String?>(null) }
+
+    val conflictingTailscaleProfile = remember(allProfiles, existingProfile) {
+        ProfileRepository.findTailscaleProfile(allProfiles, excludingProfileId = existingProfile?.id)
+    }
+    val tailscaleBlocked = conflictingTailscaleProfile != null
 
     val scrollState = rememberScrollState()
 
@@ -117,7 +128,7 @@ fun ProfileEditorScreen(
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "Configure spoofed coordinates, VPN backend, and target streaming app",
+                        text = "Configure spoofed coordinates, VPN backend, and mapped streaming apps",
                         color = TellyportColors.TextSecondary,
                         fontSize = 13.sp
                     )
@@ -139,6 +150,9 @@ fun ProfileEditorScreen(
                         lat == null || lat !in -90.0..90.0 -> validationError = "Latitude must be between -90 and 90."
                         lon == null || lon !in -180.0..180.0 -> validationError = "Longitude must be between -180 and 180."
                         acc <= 0f -> validationError = "Accuracy must be greater than 0 meters."
+                        vpnBackend == VpnBackend.TAILSCALE && tailscaleBlocked -> {
+                            validationError = ProfileRepository.SINGLE_TAILSCALE_MESSAGE
+                        }
                         else -> {
                             validationError = null
                             val updatedKey = if (vpnBackend == VpnBackend.WG_TUNNEL &&
@@ -158,8 +172,8 @@ fun ProfileEditorScreen(
                                     altitude = alt,
                                     accuracyMeters = acc,
                                     vpnBackend = vpnBackend,
-                                    vpnTunnelOrNodeName = vpnTunnelOrNodeName.trim().ifBlank { null },
-                                    targetAppPackage = targetAppPackage.trim().ifBlank { null },
+                                    tunnelName = tunnelName.trim().ifBlank { null },
+                                    mappedPackages = mappedPackages,
                                     autoLaunchApp = autoLaunchApp
                                 ),
                                 updatedKey
@@ -220,7 +234,7 @@ fun ProfileEditorScreen(
                     value = name,
                     onValueChange = { name = it },
                     label = "Profile Name",
-                    placeholder = "e.g., US, UK, AU",
+                    placeholder = "e.g., New York, London, Sydney",
                     modifier = Modifier.weight(2f)
                 )
                 TellyportTextField(
@@ -277,34 +291,65 @@ fun ProfileEditorScreen(
             }
         }
 
-        // VPN Backend Section
+        // VPN Backend Section with Single-Tailscale Guardrail
         EditorSection(title = "VPN Backend Automation") {
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 VpnBackend.entries.forEach { backend ->
+                    val isTailscaleBlockedHere = backend == VpnBackend.TAILSCALE && tailscaleBlocked
+                    val label = if (isTailscaleBlockedHere) {
+                        "${backend.displayName} (In use by ${conflictingTailscaleProfile?.name})"
+                    } else {
+                        backend.displayName
+                    }
                     TellyportSelectableChip(
-                        label = backend.displayName,
+                        label = label,
                         selected = vpnBackend == backend,
-                        onClick = { vpnBackend = backend }
+                        onClick = {
+                            if (isTailscaleBlockedHere) {
+                                validationError = ProfileRepository.SINGLE_TAILSCALE_MESSAGE
+                            } else {
+                                if (validationError == ProfileRepository.SINGLE_TAILSCALE_MESSAGE) {
+                                    validationError = null
+                                }
+                                vpnBackend = backend
+                            }
+                        }
                     )
                 }
             }
 
-            if (vpnBackend != VpnBackend.NONE) {
+            if (tailscaleBlocked) {
+                Text(
+                    text = ProfileRepository.SINGLE_TAILSCALE_MESSAGE,
+                    color = TellyportColors.Warning,
+                    fontSize = 12.sp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(TellyportColors.WarningContainer)
+                        .padding(10.dp)
+                )
+            }
+
+            if (vpnBackend == VpnBackend.WG_TUNNEL ||
+                vpnBackend == VpnBackend.TAILSCALE ||
+                vpnBackend == VpnBackend.SOCKS_WRAPPER
+            ) {
                 TellyportTextField(
-                    value = vpnTunnelOrNodeName,
-                    onValueChange = { vpnTunnelOrNodeName = it },
-                    label = if (vpnBackend == VpnBackend.WG_TUNNEL) {
-                        "WG Tunnel Name (passed via tunnelName extra)"
-                    } else {
-                        "Tailscale Exit Node Label (reminder)"
+                    value = tunnelName,
+                    onValueChange = { tunnelName = it },
+                    label = when (vpnBackend) {
+                        VpnBackend.WG_TUNNEL -> "WG Tunnel Name (passed via tunnelName extra)"
+                        VpnBackend.SOCKS_WRAPPER -> "SOCKS Wrapper Profile Name"
+                        else -> "Tailscale Exit Node Label (reminder)"
                     },
-                    placeholder = if (vpnBackend == VpnBackend.WG_TUNNEL) {
-                        "e.g., unifi-au-syd"
-                    } else {
-                        "e.g., us-nyc-exit"
+                    placeholder = when (vpnBackend) {
+                        VpnBackend.WG_TUNNEL -> "e.g., unifi-au-syd"
+                        VpnBackend.SOCKS_WRAPPER -> "e.g., london-socks"
+                        else -> "e.g., us-nyc-exit"
                     },
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -322,28 +367,115 @@ fun ProfileEditorScreen(
             }
         }
 
-        // Target Streaming App Section
-        EditorSection(title = "Target Streaming App") {
+        // Mapped Streaming Apps Section (Multi-app picker + presets + installed apps + custom)
+        EditorSection(title = "Mapped Streaming Apps (Zero-Touch Interception)") {
+            Text(
+                text = "When any mapped app is opened from the Google TV home screen, Tellyport automatically switches to this profile and relaunches it cleanly.",
+                color = TellyportColors.TextSecondary,
+                fontSize = 12.sp
+            )
+
+            if (mappedPackages.isNotEmpty()) {
+                Text(
+                    text = "Currently Mapped (select to remove):",
+                    color = TellyportColors.TextSecondary,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    mappedPackages.forEach { pkg ->
+                        val label = ProfilePresets.friendlyAppName(pkg)
+                            ?.let { "$it ($pkg) ✕" } ?: "$pkg ✕"
+                        TellyportSelectableChip(
+                            label = label,
+                            selected = true,
+                            onClick = { mappedPackages = mappedPackages.filterNot { it == pkg } }
+                        )
+                    }
+                }
+            }
+
+            Text(
+                text = "Popular Streaming App Presets (toggle):",
+                color = TellyportColors.TextSecondary,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold
+            )
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                ProfilePresets.streamingAppPresets.forEach { appPreset ->
+                ProfilePresets.streamingAppPresets.forEach { preset ->
+                    val isMapped = preset.packageName in mappedPackages
                     TellyportSelectableChip(
-                        label = appPreset.label,
-                        selected = targetAppPackage.trim() == appPreset.packageName,
-                        onClick = { targetAppPackage = appPreset.packageName }
+                        label = preset.label,
+                        selected = isMapped,
+                        onClick = {
+                            mappedPackages = if (isMapped) {
+                                mappedPackages.filterNot { it == preset.packageName }
+                            } else {
+                                (mappedPackages + preset.packageName).distinct()
+                            }
+                        }
                     )
                 }
             }
 
-            TellyportTextField(
-                value = targetAppPackage,
-                onValueChange = { targetAppPackage = it },
-                label = "Target App Package Name",
-                placeholder = "e.g., com.cbs.ott, uk.co.bbc.iplayer",
-                modifier = Modifier.fillMaxWidth()
-            )
+            if (installedApps.isNotEmpty()) {
+                Text(
+                    text = "Installed Apps on This Device (toggle):",
+                    color = TellyportColors.TextSecondary,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    installedApps.take(18).forEach { app ->
+                        val isMapped = app.packageName in mappedPackages
+                        TellyportSelectableChip(
+                            label = app.label,
+                            selected = isMapped,
+                            onClick = {
+                                mappedPackages = if (isMapped) {
+                                    mappedPackages.filterNot { it == app.packageName }
+                                } else {
+                                    (mappedPackages + app.packageName).distinct()
+                                }
+                            }
+                        )
+                    }
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TellyportTextField(
+                    value = customPackageInput,
+                    onValueChange = { customPackageInput = it },
+                    label = "Add Custom Package Name",
+                    placeholder = "e.g., com.cbs.ott, uk.co.bbc.iplayer",
+                    modifier = Modifier.weight(1f)
+                )
+                TellyportSecondaryButton(
+                    text = "Add",
+                    icon = Icons.Rounded.Add,
+                    onClick = {
+                        val pkg = customPackageInput.trim()
+                        if (pkg.isNotEmpty()) {
+                            mappedPackages = (mappedPackages + pkg).distinct()
+                            customPackageInput = ""
+                        }
+                    }
+                )
+            }
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -352,13 +484,13 @@ fun ProfileEditorScreen(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "Auto-launch Target App on Activation",
+                        text = "Auto-launch First Mapped App on Manual Activation",
                         color = TellyportColors.TextPrimary,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.SemiBold
                     )
                     Text(
-                        text = "Waits up to 8s for TRANSPORT_VPN (or launches immediately when VPN is None).",
+                        text = "Launches the first mapped app when you click Activate from Tellyport's dashboard.",
                         color = TellyportColors.TextSecondary,
                         fontSize = 12.sp
                     )
@@ -418,9 +550,9 @@ private fun TellyportTextField(
         placeholder = { Text(placeholder, color = TellyportColors.TextMuted, fontSize = 13.sp) },
         singleLine = true,
         visualTransformation = if (isSecret) {
-            androidx.compose.ui.text.input.PasswordVisualTransformation()
+            PasswordVisualTransformation()
         } else {
-            androidx.compose.ui.text.input.VisualTransformation.None
+            VisualTransformation.None
         },
         keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
         modifier = modifier,

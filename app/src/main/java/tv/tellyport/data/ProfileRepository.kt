@@ -11,11 +11,23 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import java.io.InputStream
 import java.io.OutputStream
+
+/**
+ * Thrown when saving a profile with [VpnBackend.TAILSCALE] while another profile already
+ * uses external Tailscale automation.
+ */
+class SingleTailscaleConstraintException(
+    val existingProfileId: String,
+    val existingProfileName: String
+) : IllegalStateException(
+    "Only one profile can use external Tailscale automation at a time (already assigned to $existingProfileName). Assign WG Tunnel (or another backend) to additional locations."
+)
 
 /**
  * JSON [Serializer] for persisting [ProfileStore] inside Jetpack DataStore.
@@ -28,7 +40,7 @@ object ProfileStoreSerializer : Serializer<ProfileStore> {
     }
 
     override val defaultValue: ProfileStore = ProfileStore(
-        schemaVersion = 1,
+        schemaVersion = 2,
         initialized = false,
         profiles = emptyList()
     )
@@ -50,47 +62,47 @@ object ProfileStoreSerializer : Serializer<ProfileStore> {
 }
 
 /**
- * Repository managing user-configured [RegionalProfile] entries in Jetpack DataStore.
- * Automatically pre-seeds default profiles (US, UK, AU) on first access.
+ * Repository managing user-configured [RegionalProfile] entries, active VPN session recovery,
+ * auto-disconnect settings, WG Tunnel key, and boot diagnostics in Jetpack DataStore.
  */
 class ProfileRepository(
     private val dataStore: DataStore<ProfileStore>
 ) {
-    /**
-     * Emits the current list of profiles, returning defaults until the store has been initialized.
-     */
-    val profiles: Flow<List<RegionalProfile>> = dataStore.data.map { store ->
-        if (!store.initialized) {
-            ProfilePresets.defaultProfiles()
+    val store: Flow<ProfileStore> = dataStore.data.map { current ->
+        if (!current.initialized) {
+            current.copy(profiles = ProfilePresets.defaultProfiles())
         } else {
-            store.profiles
+            current
         }
     }
 
-    /**
-     * Emits the persisted WG Tunnel remote-control authentication key.
-     */
+    val profiles: Flow<List<RegionalProfile>> = store.map { it.profiles }
+
     val wgRemoteControlKey: Flow<String> = dataStore.data.map { it.wgRemoteControlKey }
 
-    /**
-     * Persists the WG Tunnel remote-control authentication key (copied from WG Tunnel Settings).
-     */
-    suspend fun setWgRemoteControlKey(key: String) {
-        val trimmed = key.trim()
-        dataStore.updateData { current ->
-            current.copy(wgRemoteControlKey = trimmed)
-        }
-    }
+    val activeSession: Flow<ActiveVpnSession?> = dataStore.data.map { it.activeSession }
+
+    val autoDisconnectSettings: Flow<AutoDisconnectSettings> =
+        dataStore.data.map { it.autoDisconnectSettings }
+
+    val bootRecoveryDiagnostics: Flow<BootRecoveryDiagnostics?> =
+        dataStore.data.map { it.bootRecoveryDiagnostics }
+
+    suspend fun getActiveSessionSnapshot(): ActiveVpnSession? = dataStore.data.first().activeSession
+
+    suspend fun getProfilesSnapshot(): List<RegionalProfile> = profiles.first()
+
+    suspend fun getAutoDisconnectSettingsSnapshot(): AutoDisconnectSettings =
+        autoDisconnectSettings.first()
 
     /**
-     * Ensures the default profiles are written to disk on first launch so edits/deletions
-     * operate on persisted state.
+     * Ensures the default agnostic profiles (New York, London, Sydney) are persisted on first run.
      */
     suspend fun ensureSeeded() {
         dataStore.updateData { current ->
             if (!current.initialized) {
                 current.copy(
-                    schemaVersion = 1,
+                    schemaVersion = 2,
                     initialized = true,
                     profiles = ProfilePresets.defaultProfiles()
                 )
@@ -101,27 +113,53 @@ class ProfileRepository(
     }
 
     /**
-     * Inserts a new profile or replaces an existing profile with the same [RegionalProfile.id].
+     * Inserts or updates a profile, enforcing the single-[VpnBackend.TAILSCALE] constraint
+     * across all persisted profiles.
+     *
+     * @throws SingleTailscaleConstraintException if another profile already uses [VpnBackend.TAILSCALE].
      */
     suspend fun upsertProfile(profile: RegionalProfile) {
+        val normalized = profile.copy(
+            name = profile.name.trim(),
+            regionCode = profile.regionCode.trim().uppercase(),
+            tunnelName = profile.tunnelName?.trim()?.ifBlank { null },
+            mappedPackages = profile.mappedPackages
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+                .distinct()
+        )
+
         dataStore.updateData { current ->
             val baseList = if (!current.initialized) {
                 ProfilePresets.defaultProfiles()
             } else {
                 current.profiles
             }
-            val index = baseList.indexOfFirst { it.id == profile.id }
-            val updated = if (index >= 0) {
-                baseList.toMutableList().apply { set(index, profile) }
-            } else {
-                baseList + profile
+
+            if (normalized.vpnBackend == VpnBackend.TAILSCALE) {
+                val conflicting = baseList.firstOrNull {
+                    it.id != normalized.id && it.vpnBackend == VpnBackend.TAILSCALE
+                }
+                if (conflicting != null) {
+                    throw SingleTailscaleConstraintException(
+                        existingProfileId = conflicting.id,
+                        existingProfileName = conflicting.name
+                    )
+                }
             }
-            current.copy(initialized = true, profiles = updated)
+
+            val index = baseList.indexOfFirst { it.id == normalized.id }
+            val updated = if (index >= 0) {
+                baseList.toMutableList().apply { set(index, normalized) }
+            } else {
+                baseList + normalized
+            }
+            current.copy(schemaVersion = 2, initialized = true, profiles = updated)
         }
     }
 
     /**
-     * Deletes a profile by ID. Preserves an empty list if all profiles are deleted.
+     * Deletes a profile by ID. Clears [ProfileStore.activeSession] if it referenced the deleted profile.
      */
     suspend fun deleteProfile(profileId: String) {
         dataStore.updateData { current ->
@@ -130,27 +168,103 @@ class ProfileRepository(
             } else {
                 current.profiles
             }
+            val updatedSession = current.activeSession?.takeUnless { it.profileId == profileId }
             current.copy(
                 initialized = true,
-                profiles = baseList.filterNot { it.id == profileId }
+                profiles = baseList.filterNot { it.id == profileId },
+                activeSession = updatedSession
             )
         }
     }
 
     /**
-     * Restores the built-in US, UK, and AU default profiles.
+     * Restores the built-in New York, London, and Sydney agnostic profiles.
      */
     suspend fun resetDefaults() {
         dataStore.updateData { current ->
             current.copy(
+                schemaVersion = 2,
                 initialized = true,
-                profiles = ProfilePresets.defaultProfiles()
+                profiles = ProfilePresets.defaultProfiles(),
+                activeSession = null
             )
         }
     }
 
+    suspend fun setWgRemoteControlKey(key: String) {
+        val trimmed = key.trim()
+        dataStore.updateData { current ->
+            current.copy(wgRemoteControlKey = trimmed)
+        }
+    }
+
+    suspend fun setActiveSession(session: ActiveVpnSession?) {
+        dataStore.updateData { current ->
+            current.copy(activeSession = session)
+        }
+    }
+
+    suspend fun clearActiveSession() {
+        setActiveSession(null)
+    }
+
+    suspend fun setAutoDisconnectSettings(enabled: Boolean, gracePeriodSeconds: Int) {
+        val clampedGrace = gracePeriodSeconds.coerceIn(5, 600)
+        dataStore.updateData { current ->
+            current.copy(
+                autoDisconnectSettings = AutoDisconnectSettings(
+                    enabled = enabled,
+                    gracePeriodSeconds = clampedGrace
+                )
+            )
+        }
+    }
+
+    suspend fun recordBootRecoveryDiagnostics(diagnostics: BootRecoveryDiagnostics) {
+        dataStore.updateData { current ->
+            current.copy(bootRecoveryDiagnostics = diagnostics)
+        }
+    }
+
+    /**
+     * Looks up the [RegionalProfile] mapped to [packageName], or `null` if unmapped.
+     */
+    suspend fun findProfileForPackage(packageName: String): RegionalProfile? {
+        return findProfileForPackage(getProfilesSnapshot(), packageName)
+    }
+
     companion object {
         private const val DATA_STORE_FILE_NAME = "tellyport_profiles.json"
+
+        const val SINGLE_TAILSCALE_MESSAGE =
+            "Only one profile can use external Tailscale automation at a time. Assign WG Tunnel (or another backend) to additional locations."
+
+        /**
+         * Pure package-to-profile matcher used by both [ProfileRepository] and
+         * [tv.tellyport.accessibility.AppLaunchInterceptionEngine].
+         */
+        fun findProfileForPackage(
+            profiles: List<RegionalProfile>,
+            packageName: String?
+        ): RegionalProfile? {
+            val target = packageName?.trim().orEmpty()
+            if (target.isEmpty()) return null
+            return profiles.firstOrNull { profile ->
+                profile.mappedPackages.any { it.equals(target, ignoreCase = false) }
+            }
+        }
+
+        /**
+         * Finds an existing profile using [VpnBackend.TAILSCALE], optionally excluding [excludingProfileId].
+         */
+        fun findTailscaleProfile(
+            profiles: List<RegionalProfile>,
+            excludingProfileId: String? = null
+        ): RegionalProfile? {
+            return profiles.firstOrNull {
+                it.vpnBackend == VpnBackend.TAILSCALE && it.id != excludingProfileId
+            }
+        }
 
         fun create(
             context: Context,
@@ -160,7 +274,7 @@ class ProfileRepository(
                 serializer = ProfileStoreSerializer,
                 corruptionHandler = ReplaceFileCorruptionHandler {
                     ProfileStore(
-                        schemaVersion = 1,
+                        schemaVersion = 2,
                         initialized = true,
                         profiles = ProfilePresets.defaultProfiles()
                     )

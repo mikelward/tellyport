@@ -3,4 +3,6 @@
     <string name="notification_channel_name">Mock Location Service</string>
     <string name="notification_channel_description">Shows active Tellyport spoofed coordinates and lets you stop location spoofing.</string>
     <string name="notification_stop_action">Stop</string>
+    <string name="accessibility_service_label">Tellyport App Switcher</string>
+    <string name="accessibility_service_description">Detects launches of mapped streaming apps to automatically switch VPN and mock location before reopening the app.</string>
 </resources>

@@ -9,23 +9,29 @@ import android.os.Build
 import android.os.Process
 import android.provider.Settings
 import androidx.core.content.ContextCompat
+import tv.tellyport.accessibility.AccessibilityServiceState
 
 /**
- * Snapshot of location & mock-location prerequisites required on Android 14 / Google TV.
+ * Snapshot of location, mock-location, accessibility, and secure-settings prerequisites
+ * required for zero-touch operation on Android 14 / Google TV.
  */
 data class MockLocationPermissionStatus(
     val isMockLocationAppSelected: Boolean,
     val hasFineLocationPermission: Boolean,
     val hasNotificationPermission: Boolean,
-    val adbCommand: String
+    val isAccessibilityEnabled: Boolean = false,
+    val hasWriteSecureSettingsPermission: Boolean = false,
+    val adbCommand: String,
+    val adbAccessibilityCommand: String = AccessibilityServiceState.buildAdbEnableCommand("tv.tellyport"),
+    val adbWriteSecureSettingsCommand: String = MockLocationPermissionChecker.buildAdbWriteSecureSettingsCommand("tv.tellyport")
 ) {
     val isReadyForSpoofing: Boolean
         get() = isMockLocationAppSelected && hasFineLocationPermission
 }
 
 /**
- * Verifies AppOps mock location authorization and runtime permissions, and builds helper
- * intents / ADB setup commands for Developer Options.
+ * Verifies AppOps mock location authorization, Accessibility Service binding, runtime permissions,
+ * and `WRITE_SECURE_SETTINGS`, and builds settings deep links + copyable ADB setup commands.
  */
 class MockLocationPermissionChecker(
     private val context: Context
@@ -33,12 +39,22 @@ class MockLocationPermissionChecker(
     fun getAdbMockLocationCommand(): String =
         buildAdbMockLocationCommand(context.packageName)
 
+    fun getAdbAccessibilityCommand(): String =
+        AccessibilityServiceState.buildAdbEnableCommand(context.packageName)
+
+    fun getAdbWriteSecureSettingsCommand(): String =
+        buildAdbWriteSecureSettingsCommand(context.packageName)
+
     fun checkStatus(): MockLocationPermissionStatus {
         return MockLocationPermissionStatus(
             isMockLocationAppSelected = isMockLocationAllowed(),
             hasFineLocationPermission = hasFineLocationPermission(),
             hasNotificationPermission = hasNotificationPermission(),
-            adbCommand = getAdbMockLocationCommand()
+            isAccessibilityEnabled = AccessibilityServiceState.isEnabledInSettings(context),
+            hasWriteSecureSettingsPermission = hasWriteSecureSettingsPermission(),
+            adbCommand = getAdbMockLocationCommand(),
+            adbAccessibilityCommand = getAdbAccessibilityCommand(),
+            adbWriteSecureSettingsCommand = getAdbWriteSecureSettingsCommand()
         )
     }
 
@@ -86,11 +102,21 @@ class MockLocationPermissionChecker(
         }
     }
 
-    /**
-     * Deep link intent to Android Developer Options -> "Select mock location app".
-     */
+    fun hasWriteSecureSettingsPermission(): Boolean {
+        return ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.WRITE_SECURE_SETTINGS
+        ) == PackageManager.PERMISSION_GRANTED
+    }
+
     fun buildDeveloperOptionsIntent(): Intent {
         return Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+    }
+
+    fun buildAccessibilitySettingsIntent(): Intent {
+        return Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
     }
@@ -98,5 +124,8 @@ class MockLocationPermissionChecker(
     companion object {
         fun buildAdbMockLocationCommand(packageName: String): String =
             "adb shell appops set $packageName android:mock_location allow"
+
+        fun buildAdbWriteSecureSettingsCommand(packageName: String): String =
+            "adb shell pm grant $packageName android.permission.WRITE_SECURE_SETTINGS"
     }
 }

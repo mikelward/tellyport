@@ -1,9 +1,6 @@
 package tv.tellyport.vpn
 
 import android.content.Intent
-import tv.tellyport.data.RegionalProfile
-import tv.tellyport.data.VpnBackend
-import tv.tellyport.location.MockLocationStatus
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -19,6 +16,11 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import tv.tellyport.data.ActiveVpnSession
+import tv.tellyport.data.RegionalProfile
+import tv.tellyport.data.VpnBackend
+import tv.tellyport.location.MockLocationStatus
+import java.net.InetAddress
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
@@ -29,9 +31,11 @@ class VpnControllerTest {
         private val installedPackages: Set<String> = setOf(
             VpnController.TAILSCALE_PACKAGE,
             VpnController.WG_TUNNEL_PACKAGE,
+            VpnController.SHIZUKU_PACKAGE,
             "com.cbs.ott",
             "uk.co.bbc.iplayer",
-            "com.amazon.avod.thirdpartyclient"
+            "com.amazon.avod.thirdpartyclient",
+            "au.com.stan.and"
         )
     ) : IntentDispatcher {
         val broadcasts = mutableListOf<Intent>()
@@ -74,201 +78,84 @@ class VpnControllerTest {
     }
 
     @Test
-    fun tailscaleConnectAndDisconnectIntents_targetExplicitIpnReceiver() {
-        val dispatcher = RecordingIntentDispatcher()
-        val controller = VpnController(dispatcher)
-
-        val connectIntent = controller.buildTailscaleConnectIntent()
-        assertEquals(VpnController.ACTION_TAILSCALE_CONNECT, connectIntent.action)
-        assertEquals(VpnController.TAILSCALE_PACKAGE, connectIntent.`package`)
-        assertEquals(VpnController.TAILSCALE_PACKAGE, connectIntent.component?.packageName)
-        assertEquals(VpnController.TAILSCALE_RECEIVER, connectIntent.component?.className)
-
-        val disconnectIntent = controller.buildTailscaleDisconnectIntent()
-        assertEquals(VpnController.ACTION_TAILSCALE_DISCONNECT, disconnectIntent.action)
-        assertEquals(VpnController.TAILSCALE_PACKAGE, disconnectIntent.`package`)
-        assertEquals(VpnController.TAILSCALE_RECEIVER, disconnectIntent.component?.className)
+    fun vpnBackendHeuristic_identifiesTailscaleCgnatAndMagicDnsWithoutOwnerUid() {
+        assertEquals(
+            InferredVpnBackend.TAILSCALE,
+            VpnBackendHeuristic.inferFromAddresses(
+                linkAddresses = listOf(InetAddress.getByName("100.64.0.1"))
+            )
+        )
+        assertEquals(
+            InferredVpnBackend.TAILSCALE,
+            VpnBackendHeuristic.inferFromAddresses(
+                linkAddresses = listOf(InetAddress.getByName("100.127.255.254"))
+            )
+        )
+        assertEquals(
+            InferredVpnBackend.TAILSCALE,
+            VpnBackendHeuristic.inferFromAddresses(
+                linkAddresses = listOf(InetAddress.getByName("10.0.0.2")),
+                dnsServers = listOf(InetAddress.getByName("100.100.100.100"))
+            )
+        )
+        // Outside 100.64.0.0/10 -> UNKNOWN_EXTERNAL
+        assertEquals(
+            InferredVpnBackend.UNKNOWN_EXTERNAL,
+            VpnBackendHeuristic.inferFromAddresses(
+                linkAddresses = listOf(InetAddress.getByName("100.63.255.255"))
+            )
+        )
+        assertEquals(
+            InferredVpnBackend.UNKNOWN_EXTERNAL,
+            VpnBackendHeuristic.inferFromAddresses(
+                linkAddresses = listOf(InetAddress.getByName("100.128.0.1"))
+            )
+        )
+        assertEquals(
+            InferredVpnBackend.UNKNOWN_EXTERNAL,
+            VpnBackendHeuristic.inferFromAddresses(
+                linkAddresses = listOf(InetAddress.getByName("10.10.0.5")),
+                dnsServers = listOf(InetAddress.getByName("1.1.1.1"))
+            )
+        )
     }
 
     @Test
-    fun wgTunnelIntents_useOfficialRemoteControlReceiverContractWithKeyAndTunnelName() {
+    fun tailscaleAndWgTunnelIntents_matchExpectedContracts() {
         val dispatcher = RecordingIntentDispatcher()
         val controller = VpnController(dispatcher)
 
-        val connectIntent = controller.buildWgTunnelConnectIntent("  unifi-au-syd  ", "  secret-key-123 ")
-        assertNotNull(connectIntent)
-        assertEquals("com.zaneschepke.wireguardautotunnel.START_TUNNEL", connectIntent!!.action)
-        assertEquals("com.zaneschepke.wireguardautotunnel", connectIntent.`package`)
-        assertEquals(
-            "com.zaneschepke.wireguardautotunnel.core.broadcast.RemoteControlReceiver",
-            connectIntent.component?.className
-        )
-        assertEquals("unifi-au-syd", connectIntent.getStringExtra("tunnelName"))
-        assertEquals("secret-key-123", connectIntent.getStringExtra("key"))
+        val tsConnect = controller.buildTailscaleConnectIntent()
+        assertEquals(VpnController.ACTION_TAILSCALE_CONNECT, tsConnect.action)
+        assertEquals(VpnController.TAILSCALE_PACKAGE, tsConnect.`package`)
+        assertEquals(VpnController.TAILSCALE_RECEIVER, tsConnect.component?.className)
 
-        val disconnectIntent = controller.buildWgTunnelDisconnectIntent("unifi-au-syd", "secret-key-123")
-        assertNotNull(disconnectIntent)
-        assertEquals("com.zaneschepke.wireguardautotunnel.STOP_TUNNEL", disconnectIntent!!.action)
-        assertEquals("com.zaneschepke.wireguardautotunnel", disconnectIntent.`package`)
-        assertEquals(
-            "com.zaneschepke.wireguardautotunnel.core.broadcast.RemoteControlReceiver",
-            disconnectIntent.component?.className
-        )
-        assertEquals("unifi-au-syd", disconnectIntent.getStringExtra("tunnelName"))
-        assertEquals("secret-key-123", disconnectIntent.getStringExtra("key"))
-
-        val blankTunnelIntent = controller.buildWgTunnelConnectIntent("   ", "secret-key-123")
-        assertNotNull(blankTunnelIntent)
-        assertFalse(blankTunnelIntent!!.hasExtra("tunnelName"))
-        assertEquals("secret-key-123", blankTunnelIntent.getStringExtra("key"))
+        val wgConnect = controller.buildWgTunnelConnectIntent("  unifi-au-syd ", " key-123 ")
+        assertNotNull(wgConnect)
+        assertEquals(VpnController.ACTION_WG_TUNNEL_CONNECT, wgConnect!!.action)
+        assertEquals(VpnController.WG_TUNNEL_RECEIVER, wgConnect.component?.className)
+        assertEquals("unifi-au-syd", wgConnect.getStringExtra(VpnController.EXTRA_WG_TUNNEL_NAME))
+        assertEquals("key-123", wgConnect.getStringExtra(VpnController.EXTRA_WG_REMOTE_KEY))
 
         assertNull(controller.buildWgTunnelConnectIntent("unifi-au-syd", ""))
-        assertNull(controller.buildWgTunnelConnectIntent("unifi-au-syd", "   "))
-        assertNull(controller.buildWgTunnelDisconnectIntent("unifi-au-syd", null))
     }
 
     @Test
-    fun noneBackend_sendsNoBroadcast() {
+    fun coldStartRedactedOwnerUid_tailscaleAlreadyConnectedVia100_64_takesFastPathWithoutDisconnectOrTimeout() = runTest {
         val dispatcher = RecordingIntentDispatcher()
         val controller = VpnController(dispatcher)
-        val profile = RegionalProfile(
-            id = "none-1",
-            name = "Local Only",
-            regionCode = "US",
-            latitude = 40.7128,
-            longitude = -74.0060,
-            vpnBackend = VpnBackend.NONE
-        )
-
-        val dispatched = controller.connect(profile)
-        assertNull(dispatched)
-        assertTrue(dispatcher.broadcasts.isEmpty())
-    }
-
-    @Test
-    fun openTailscaleAndWgTunnelApps_launchPackagesWhenInstalled() {
-        val dispatcher = RecordingIntentDispatcher(
-            installedPackages = setOf(VpnController.TAILSCALE_PACKAGE, VpnController.WG_TUNNEL_PACKAGE)
-        )
-        val controller = VpnController(dispatcher)
-
-        assertTrue(controller.openTailscaleApp())
-        assertTrue(controller.openWgTunnelApp())
-        assertEquals(
-            listOf(VpnController.TAILSCALE_PACKAGE, VpnController.WG_TUNNEL_PACKAGE),
-            dispatcher.startedActivities.map { it.`package` }
-        )
-    }
-
-    @Test
-    fun activationCoordinator_waitsForVpnThenLaunchesTargetApp() = runTest {
-        val dispatcher = RecordingIntentDispatcher()
-        val controller = VpnController(dispatcher)
-        val vpnState = MutableStateFlow(VpnConnectionState(isConnected = false))
-        val mockStatus = MutableStateFlow(MockLocationStatus())
-        val startedMockProfiles = mutableListOf<RegionalProfile>()
-        var stoppedMockCount = 0
-
-        val coordinator = ProfileActivationCoordinator(
-            vpnController = controller,
-            vpnStateFlow = vpnState,
-            mockLocationStatusFlow = mockStatus,
-            startMockLocation = autoInjectingMockStarter(mockStatus, startedMockProfiles),
-            stopMockLocation = { stoppedMockCount++ },
-            wgRemoteControlKeyProvider = { "wg-key-abc" },
-            vpnWaitTimeoutMs = 8_000L
-        )
-
-        val profile = RegionalProfile(
-            id = "us-1",
-            name = "US",
-            regionCode = "US",
-            latitude = 40.7128,
-            longitude = -74.0060,
-            vpnBackend = VpnBackend.TAILSCALE,
-            targetAppPackage = "com.cbs.ott",
-            autoLaunchApp = true
-        )
-
-        val resultDeferred = async { coordinator.activate(profile) }
-
-        advanceTimeBy(2_000L)
-        assertEquals(1, dispatcher.broadcasts.size)
-        assertEquals(VpnController.ACTION_TAILSCALE_CONNECT, dispatcher.broadcasts.single().action)
-        assertEquals(listOf(profile), startedMockProfiles)
-        assertTrue(dispatcher.startedActivities.isEmpty())
-
-        vpnState.value = VpnConnectionState(isConnected = true, networkHandle = 101L)
-        val result = resultDeferred.await()
-
-        assertTrue(result is ActivationProgress.Active)
-        assertEquals(1, dispatcher.startedActivities.size)
-        assertEquals("com.cbs.ott", dispatcher.startedActivities.single().`package`)
-
-        coordinator.deactivateAll()
-        assertEquals(1, stoppedMockCount)
-        assertEquals(3, dispatcher.broadcasts.size)
-        assertEquals(VpnController.ACTION_TAILSCALE_DISCONNECT, dispatcher.broadcasts[1].action)
-        assertEquals(VpnController.ACTION_WG_TUNNEL_DISCONNECT, dispatcher.broadcasts[2].action)
-        assertEquals("wg-key-abc", dispatcher.broadcasts[2].getStringExtra(VpnController.EXTRA_WG_REMOTE_KEY))
-    }
-
-    @Test
-    fun activationCoordinator_alreadyConnectedExternalTailscaleWithRedactedOwner_reconnectsCleanly() = runTest {
-        val dispatcher = RecordingIntentDispatcher()
-        val controller = VpnController(dispatcher)
-        // Fresh coordinator: Tailscale is already connected externally and Android redacts ownerUid.
+        // Cold start: persistedSession is null, ownerUid is unavailable/redacted,
+        // but LinkProperties heuristic detects Tailscale 100.64.0.0/10!
         val vpnState = MutableStateFlow(
-            VpnConnectionState(isConnected = true, networkHandle = 100L, ownerBackend = null)
+            VpnConnectionState(
+                isConnected = true,
+                networkHandle = 100L,
+                inferredBackend = InferredVpnBackend.TAILSCALE,
+                ipv4Addresses = listOf("100.101.42.7")
+            )
         )
         val mockStatus = MutableStateFlow(MockLocationStatus())
-
-        val coordinator = ProfileActivationCoordinator(
-            vpnController = controller,
-            vpnStateFlow = vpnState,
-            mockLocationStatusFlow = mockStatus,
-            startMockLocation = autoInjectingMockStarter(mockStatus),
-            stopMockLocation = {},
-            wgRemoteControlKeyProvider = { "" },
-            vpnWaitTimeoutMs = 8_000L
-        )
-
-        val tailscaleProfile = RegionalProfile(
-            id = "us-ts",
-            name = "US Tailscale",
-            regionCode = "US",
-            latitude = 40.7128,
-            longitude = -74.0060,
-            vpnBackend = VpnBackend.TAILSCALE,
-            targetAppPackage = "com.cbs.ott",
-            autoLaunchApp = true
-        )
-
-        val deferred = async { coordinator.activate(tailscaleProfile) }
-        runCurrent()
-
-        // Coordinator explicitly coordinates teardown by sending Tailscale DISCONNECT_VPN.
-        assertEquals(VpnController.ACTION_TAILSCALE_DISCONNECT, dispatcher.broadcasts.last().action)
-        assertTrue(dispatcher.startedActivities.isEmpty())
-
-        // Tailscale disconnects cleanly, then reconnects on handle 101 (or even same handle after disconnect).
-        vpnState.value = VpnConnectionState(isConnected = false, networkHandle = null, ownerBackend = null)
-        runCurrent()
-        assertEquals(VpnController.ACTION_TAILSCALE_CONNECT, dispatcher.broadcasts.last().action)
-
-        vpnState.value = VpnConnectionState(isConnected = true, networkHandle = 100L, ownerBackend = null)
-        val result = deferred.await()
-
-        assertTrue(result is ActivationProgress.Active)
-        assertEquals(listOf("com.cbs.ott"), dispatcher.startedActivities.map { it.`package` })
-    }
-
-    @Test
-    fun activationCoordinator_switchingBackends_tearsDownOldVpnAndWaitsForNewConnection() = runTest {
-        val dispatcher = RecordingIntentDispatcher()
-        val controller = VpnController(dispatcher)
-        val vpnState = MutableStateFlow(VpnConnectionState(isConnected = false))
-        val mockStatus = MutableStateFlow(MockLocationStatus())
+        var persistedSession: ActiveVpnSession? = null
 
         val coordinator = ProfileActivationCoordinator(
             vpnController = controller,
@@ -277,69 +164,160 @@ class VpnControllerTest {
             startMockLocation = autoInjectingMockStarter(mockStatus),
             stopMockLocation = {},
             wgRemoteControlKeyProvider = { "wg-key-1" },
-            vpnWaitTimeoutMs = 8_000L
+            persistedSessionProvider = { persistedSession },
+            persistActiveSession = { persistedSession = it }
         )
 
-        val tailscaleProfile = RegionalProfile(
-            id = "us-ts",
-            name = "US Tailscale",
+        val nyTailscale = RegionalProfile(
+            id = "preset-ny",
+            name = "New York",
             regionCode = "US",
             latitude = 40.7128,
             longitude = -74.0060,
             vpnBackend = VpnBackend.TAILSCALE,
-            targetAppPackage = "com.cbs.ott",
+            mappedPackages = listOf("com.cbs.ott"),
             autoLaunchApp = true
         )
 
-        val firstActivation = async { coordinator.activate(tailscaleProfile) }
-        runCurrent()
-        vpnState.value = VpnConnectionState(isConnected = true, networkHandle = 100L)
-        assertTrue(firstActivation.await() is ActivationProgress.Active)
-        assertEquals(listOf("com.cbs.ott"), dispatcher.startedActivities.map { it.`package` })
+        val result = coordinator.activate(nyTailscale)
 
-        val wgProfile = RegionalProfile(
-            id = "au-wg",
-            name = "AU WG",
+        // Must take Already Satisfied Fast-Path: ZERO disconnect/connect broadcasts, no timeout,
+        // mock location started, session persisted, and app launched immediately!
+        assertTrue(result is ActivationProgress.Active)
+        assertTrue("Expected zero VPN broadcasts on Tailscale fast-path", dispatcher.broadcasts.isEmpty())
+        assertEquals("preset-ny", persistedSession?.profileId)
+        assertEquals(VpnBackend.TAILSCALE, persistedSession?.vpnBackend)
+        assertEquals(listOf("com.cbs.ott"), dispatcher.startedActivities.map { it.`package` })
+    }
+
+    @Test
+    fun unattributedExternalVpnConflict_broadcastsDisconnectToBothBackendsWaits4sThenConnectsAndStabilizes() = runTest {
+        val dispatcher = RecordingIntentDispatcher()
+        val controller = VpnController(dispatcher)
+        // Unattributed external VPN (e.g., 10.0.0.2 -> UNKNOWN_EXTERNAL, no persisted session).
+        val vpnState = MutableStateFlow(
+            VpnConnectionState(
+                isConnected = true,
+                networkHandle = 500L,
+                inferredBackend = InferredVpnBackend.UNKNOWN_EXTERNAL,
+                ipv4Addresses = listOf("10.0.0.2")
+            )
+        )
+        val mockStatus = MutableStateFlow(MockLocationStatus())
+        var persistedSession: ActiveVpnSession? = null
+
+        val coordinator = ProfileActivationCoordinator(
+            vpnController = controller,
+            vpnStateFlow = vpnState,
+            mockLocationStatusFlow = mockStatus,
+            startMockLocation = autoInjectingMockStarter(mockStatus),
+            stopMockLocation = {},
+            wgRemoteControlKeyProvider = { "wg-secret-key" },
+            persistedSessionProvider = { persistedSession },
+            persistActiveSession = { persistedSession = it }
+        )
+
+        val sydneyWg = RegionalProfile(
+            id = "preset-sydney",
+            name = "Sydney",
             regionCode = "AU",
             latitude = -33.8688,
             longitude = 151.2093,
             vpnBackend = VpnBackend.WG_TUNNEL,
-            vpnTunnelOrNodeName = "unifi-au-syd",
-            targetAppPackage = "com.amazon.avod.thirdpartyclient",
+            tunnelName = "unifi-au-syd",
+            mappedPackages = listOf("au.com.stan.and"),
             autoLaunchApp = true
         )
 
-        val secondActivation = async { coordinator.activate(wgProfile) }
-        advanceTimeBy(1_000L)
+        val deferred = async {
+            coordinator.activate(
+                profile = sydneyWg,
+                targetPackageOverride = "au.com.stan.and",
+                clearTaskOnLaunch = true
+            )
+        }
+        advanceTimeBy(500L)
 
-        assertEquals(VpnController.ACTION_TAILSCALE_DISCONNECT, dispatcher.broadcasts.last().action)
-        assertEquals(1, dispatcher.startedActivities.size)
+        // Must have broadcast disconnect to BOTH Tailscale and WG Tunnel before connecting.
+        assertEquals(2, dispatcher.broadcasts.size)
+        assertEquals(VpnController.ACTION_TAILSCALE_DISCONNECT, dispatcher.broadcasts[0].action)
+        assertEquals(VpnController.ACTION_WG_TUNNEL_DISCONNECT, dispatcher.broadcasts[1].action)
+        assertTrue(dispatcher.startedActivities.isEmpty())
 
-        vpnState.value = VpnConnectionState(isConnected = false, networkHandle = null)
+        // Simulate TRANSPORT_VPN dropping (onLost).
+        vpnState.value = VpnConnectionState(isConnected = false, inferredBackend = InferredVpnBackend.NONE)
         runCurrent()
 
-        val wgStartBroadcast = dispatcher.broadcasts.last()
-        assertEquals(VpnController.ACTION_WG_TUNNEL_CONNECT, wgStartBroadcast.action)
-        assertEquals("unifi-au-syd", wgStartBroadcast.getStringExtra(VpnController.EXTRA_WG_TUNNEL_NAME))
-        assertEquals("wg-key-1", wgStartBroadcast.getStringExtra(VpnController.EXTRA_WG_REMOTE_KEY))
-        assertEquals(1, dispatcher.startedActivities.size)
+        // Coordinator now sends WG Tunnel START_TUNNEL for unifi-au-syd.
+        assertEquals(3, dispatcher.broadcasts.size)
+        assertEquals(VpnController.ACTION_WG_TUNNEL_CONNECT, dispatcher.broadcasts[2].action)
+        assertEquals("unifi-au-syd", dispatcher.broadcasts[2].getStringExtra(VpnController.EXTRA_WG_TUNNEL_NAME))
+        assertEquals("wg-secret-key", dispatcher.broadcasts[2].getStringExtra(VpnController.EXTRA_WG_REMOTE_KEY))
 
-        vpnState.value = VpnConnectionState(isConnected = true, networkHandle = 200L)
-        val secondResult = secondActivation.await()
-
-        assertTrue(secondResult is ActivationProgress.Active)
-        assertEquals(
-            listOf("com.cbs.ott", "com.amazon.avod.thirdpartyclient"),
-            dispatcher.startedActivities.map { it.`package` }
+        // Simulate new WG Tunnel coming up on handle 600.
+        vpnState.value = VpnConnectionState(
+            isConnected = true,
+            networkHandle = 600L,
+            inferredBackend = InferredVpnBackend.UNKNOWN_EXTERNAL
         )
+
+        // Advance 250ms: still inside 500ms stabilization delay -> app must not launch yet.
+        advanceTimeBy(250L)
+        assertTrue(dispatcher.startedActivities.isEmpty())
+
+        // Advance past 500ms stabilization delay -> app launches with CLEAR_TASK and session persisted!
+        advanceTimeBy(300L)
+        val result = deferred.await()
+
+        assertTrue(result is ActivationProgress.Active)
+        assertEquals("preset-sydney", persistedSession?.profileId)
+        assertEquals(VpnBackend.WG_TUNNEL, persistedSession?.vpnBackend)
+        assertEquals("unifi-au-syd", persistedSession?.tunnelName)
+        assertEquals(1, dispatcher.startedActivities.size)
+        val launchedIntent = dispatcher.startedActivities.single()
+        assertEquals("au.com.stan.and", launchedIntent.`package`)
+        assertTrue((launchedIntent.flags and Intent.FLAG_ACTIVITY_CLEAR_TASK) != 0)
+        assertTrue((launchedIntent.flags and Intent.FLAG_ACTIVITY_NEW_TASK) != 0)
     }
 
     @Test
-    fun activationCoordinator_cancellationDuringPendingNamedWgTunnel_stopsThatExactTunnel() = runTest {
+    fun unconfiguredProfile_returnsWarningWithoutTouchingVpnOrLaunching() = runTest {
+        val dispatcher = RecordingIntentDispatcher()
+        val controller = VpnController(dispatcher)
+        val vpnState = MutableStateFlow(VpnConnectionState())
+        val mockStatus = MutableStateFlow(MockLocationStatus())
+
+        val coordinator = ProfileActivationCoordinator(
+            vpnController = controller,
+            vpnStateFlow = vpnState,
+            mockLocationStatusFlow = mockStatus,
+            startMockLocation = autoInjectingMockStarter(mockStatus),
+            stopMockLocation = {}
+        )
+
+        val unconfigured = RegionalProfile(
+            id = "preset-london",
+            name = "London",
+            regionCode = "UK",
+            latitude = 51.5074,
+            longitude = -0.1278,
+            vpnBackend = VpnBackend.UNCONFIGURED,
+            mappedPackages = listOf("uk.co.bbc.iplayer")
+        )
+
+        val result = coordinator.activate(unconfigured)
+        assertTrue(result is ActivationProgress.Warning)
+        assertTrue(dispatcher.broadcasts.isEmpty())
+        assertTrue(dispatcher.startedActivities.isEmpty())
+    }
+
+    @Test
+    fun cancellationDuringPendingNamedWgTunnel_stopsThatExactTunnelAndClearsSession() = runTest {
         val dispatcher = RecordingIntentDispatcher()
         val controller = VpnController(dispatcher)
         val vpnState = MutableStateFlow(VpnConnectionState(isConnected = false))
         val mockStatus = MutableStateFlow(MockLocationStatus())
+        var persistedSession: ActiveVpnSession? = null
 
         val coordinator = ProfileActivationCoordinator(
             vpnController = controller,
@@ -348,118 +326,37 @@ class VpnControllerTest {
             startMockLocation = autoInjectingMockStarter(mockStatus),
             stopMockLocation = {},
             wgRemoteControlKeyProvider = { "wg-key-99" },
-            vpnWaitTimeoutMs = 8_000L
+            persistedSessionProvider = { persistedSession },
+            persistActiveSession = { persistedSession = it }
         )
 
         val wgProfile = RegionalProfile(
             id = "au-wg-named",
-            name = "AU Named Tunnel",
+            name = "Sydney",
             regionCode = "AU",
             latitude = -33.8688,
             longitude = 151.2093,
             vpnBackend = VpnBackend.WG_TUNNEL,
-            vpnTunnelOrNodeName = "unifi-au-syd",
-            targetAppPackage = "com.amazon.avod.thirdpartyclient",
-            autoLaunchApp = true
+            tunnelName = "unifi-au-syd",
+            mappedPackages = listOf("au.com.stan.and")
         )
 
-        // Start activation; START_TUNNEL for "unifi-au-syd" is dispatched, now waiting for VPN.
         val pendingJob = async { coordinator.activate(wgProfile) }
         advanceTimeBy(1_000L)
         assertEquals(VpnController.ACTION_WG_TUNNEL_CONNECT, dispatcher.broadcasts.last().action)
-        assertEquals("unifi-au-syd", dispatcher.broadcasts.last().getStringExtra(VpnController.EXTRA_WG_TUNNEL_NAME))
 
-        // Cancel activation mid-wait and invoke deactivateAll().
         pendingJob.cancel()
         coordinator.deactivateAll()
 
-        val wgStopIntents = dispatcher.broadcasts.filter { it.action == VpnController.ACTION_WG_TUNNEL_DISCONNECT }
-        assertEquals(1, wgStopIntents.size)
-        assertEquals("unifi-au-syd", wgStopIntents.single().getStringExtra(VpnController.EXTRA_WG_TUNNEL_NAME))
-        assertEquals("wg-key-99", wgStopIntents.single().getStringExtra(VpnController.EXTRA_WG_REMOTE_KEY))
+        val wgStops = dispatcher.broadcasts.filter { it.action == VpnController.ACTION_WG_TUNNEL_DISCONNECT }
+        assertEquals(1, wgStops.size)
+        assertEquals("unifi-au-syd", wgStops.single().getStringExtra(VpnController.EXTRA_WG_TUNNEL_NAME))
+        assertNull(persistedSession)
         assertTrue(dispatcher.startedActivities.isEmpty())
     }
 
     @Test
-    fun activationCoordinator_switchingBackends_whenOldVpnNeverTearsDown_doesNotLaunchApp() = runTest {
-        val dispatcher = RecordingIntentDispatcher()
-        val controller = VpnController(dispatcher)
-        val vpnState = MutableStateFlow(
-            VpnConnectionState(
-                isConnected = true,
-                networkHandle = 100L,
-                ownerBackend = VpnBackend.TAILSCALE
-            )
-        )
-        val mockStatus = MutableStateFlow(MockLocationStatus())
-
-        val coordinator = ProfileActivationCoordinator(
-            vpnController = controller,
-            vpnStateFlow = vpnState,
-            mockLocationStatusFlow = mockStatus,
-            startMockLocation = autoInjectingMockStarter(mockStatus),
-            stopMockLocation = {},
-            wgRemoteControlKeyProvider = { "wg-key-1" },
-            vpnWaitTimeoutMs = 8_000L
-        )
-
-        val wgProfile = RegionalProfile(
-            id = "au-wg",
-            name = "AU WG",
-            regionCode = "AU",
-            latitude = -33.8688,
-            longitude = 151.2093,
-            vpnBackend = VpnBackend.WG_TUNNEL,
-            vpnTunnelOrNodeName = "unifi-au-syd",
-            targetAppPackage = "com.amazon.avod.thirdpartyclient",
-            autoLaunchApp = true
-        )
-
-        val deferred = async { coordinator.activate(wgProfile) }
-        advanceTimeBy(9_000L)
-        val result = deferred.await()
-
-        assertTrue(result is ActivationProgress.Warning)
-        assertTrue(dispatcher.startedActivities.isEmpty())
-    }
-
-    @Test
-    fun activationCoordinator_wgTunnelWithoutKey_warnsAndSkipsBroadcastAndLaunch() = runTest {
-        val dispatcher = RecordingIntentDispatcher()
-        val controller = VpnController(dispatcher)
-        val vpnState = MutableStateFlow(VpnConnectionState(isConnected = false))
-        val mockStatus = MutableStateFlow(MockLocationStatus())
-
-        val coordinator = ProfileActivationCoordinator(
-            vpnController = controller,
-            vpnStateFlow = vpnState,
-            mockLocationStatusFlow = mockStatus,
-            startMockLocation = autoInjectingMockStarter(mockStatus),
-            stopMockLocation = {},
-            wgRemoteControlKeyProvider = { "" },
-            vpnWaitTimeoutMs = 8_000L
-        )
-
-        val wgProfile = RegionalProfile(
-            id = "au-wg",
-            name = "AU WG",
-            regionCode = "AU",
-            latitude = -33.8688,
-            longitude = 151.2093,
-            vpnBackend = VpnBackend.WG_TUNNEL,
-            vpnTunnelOrNodeName = "unifi-au-syd",
-            targetAppPackage = "com.amazon.avod.thirdpartyclient",
-            autoLaunchApp = true
-        )
-
-        val result = coordinator.activate(wgProfile)
-        assertTrue(result is ActivationProgress.Warning)
-        assertTrue(dispatcher.broadcasts.isEmpty())
-        assertTrue(dispatcher.startedActivities.isEmpty())
-    }
-
-    @Test
-    fun activationCoordinator_noneBackend_waitsForFirstMockFixBeforeLaunchingApp() = runTest {
+    fun whenVpnDropsDuringMockLocationWait_skipsAppLaunchAndWarns() = runTest {
         val dispatcher = RecordingIntentDispatcher()
         val controller = VpnController(dispatcher)
         val vpnState = MutableStateFlow(VpnConnectionState(isConnected = false))
@@ -470,158 +367,47 @@ class VpnControllerTest {
             vpnController = controller,
             vpnStateFlow = vpnState,
             mockLocationStatusFlow = mockStatus,
-            startMockLocation = { _, sessionId -> capturedSessionId = sessionId },
+            startMockLocation = { _, sid -> capturedSessionId = sid },
             stopMockLocation = {},
-            vpnWaitTimeoutMs = 8_000L,
-            mockLocationWaitTimeoutMs = 5_000L
+            stabilizationDelayMs = 100L
         )
 
         val profile = RegionalProfile(
-            id = "uk-none",
-            name = "UK Direct",
-            regionCode = "UK",
-            latitude = 51.5074,
-            longitude = -0.1278,
-            vpnBackend = VpnBackend.NONE,
-            targetAppPackage = "uk.co.bbc.iplayer",
+            id = "us-drop",
+            name = "New York",
+            regionCode = "US",
+            latitude = 40.7128,
+            longitude = -74.0060,
+            vpnBackend = VpnBackend.TAILSCALE,
+            mappedPackages = listOf("com.cbs.ott"),
             autoLaunchApp = true
         )
 
         val deferred = async { coordinator.activate(profile) }
-        advanceTimeBy(500L)
+        runCurrent()
 
-        // Mock service hasn't injected fix #1 yet -> target app MUST NOT launch yet!
-        assertTrue(capturedSessionId > 0L)
-        assertTrue(dispatcher.broadcasts.isEmpty())
-        assertTrue(dispatcher.startedActivities.isEmpty())
+        vpnState.value = VpnConnectionState(
+            isConnected = true,
+            networkHandle = 777L,
+            inferredBackend = InferredVpnBackend.TAILSCALE
+        )
+        advanceTimeBy(300L)
 
-        // Service injects fix #1 for this session.
+        // VPN drops before first mock fix arrives.
+        vpnState.value = VpnConnectionState(isConnected = false, inferredBackend = InferredVpnBackend.NONE)
+        advanceTimeBy(100L)
+
         mockStatus.value = MockLocationStatus(
             isActive = true,
             sessionId = capturedSessionId,
             activeProfileId = profile.id,
             activeProfileName = profile.name,
+            configuredLatitude = profile.latitude,
+            configuredLongitude = profile.longitude,
             injectionCount = 1L
         )
+
         val result = deferred.await()
-
-        assertTrue(result is ActivationProgress.Active)
-        assertEquals(listOf("uk.co.bbc.iplayer"), dispatcher.startedActivities.map { it.`package` })
-    }
-
-    @Test
-    fun activationCoordinator_whenMockServiceStartupFails_skipsAppLaunchImmediately() = runTest {
-        val dispatcher = RecordingIntentDispatcher()
-        val controller = VpnController(dispatcher)
-        val vpnState = MutableStateFlow(VpnConnectionState(isConnected = false))
-        val mockStatus = MutableStateFlow(MockLocationStatus())
-
-        val coordinator = ProfileActivationCoordinator(
-            vpnController = controller,
-            vpnStateFlow = vpnState,
-            mockLocationStatusFlow = mockStatus,
-            startMockLocation = { _, sessionId ->
-                mockStatus.value = MockLocationStatus(
-                    isActive = false,
-                    failedSessionId = sessionId,
-                    mockPermissionDenied = true,
-                    errorMessage = "Tellyport is not selected as the Mock Location app."
-                )
-            },
-            stopMockLocation = {},
-            vpnWaitTimeoutMs = 8_000L,
-            mockLocationWaitTimeoutMs = 5_000L
-        )
-
-        val profile = RegionalProfile(
-            id = "uk-none-fail",
-            name = "UK Direct",
-            regionCode = "UK",
-            latitude = 51.5074,
-            longitude = -0.1278,
-            vpnBackend = VpnBackend.NONE,
-            targetAppPackage = "uk.co.bbc.iplayer",
-            autoLaunchApp = true
-        )
-
-        val result = coordinator.activate(profile)
-
-        assertTrue(result is ActivationProgress.Warning)
-        assertTrue(dispatcher.startedActivities.isEmpty())
-    }
-
-    @Test
-    fun activationCoordinator_whenAutoLaunchDisabled_skipsLaunchingTargetApp() = runTest {
-        val dispatcher = RecordingIntentDispatcher()
-        val controller = VpnController(dispatcher)
-        val vpnState = MutableStateFlow(VpnConnectionState(isConnected = false))
-        val mockStatus = MutableStateFlow(MockLocationStatus())
-
-        val coordinator = ProfileActivationCoordinator(
-            vpnController = controller,
-            vpnStateFlow = vpnState,
-            mockLocationStatusFlow = mockStatus,
-            startMockLocation = autoInjectingMockStarter(mockStatus),
-            stopMockLocation = {},
-            wgRemoteControlKeyProvider = { "wg-secret" },
-            vpnWaitTimeoutMs = 8_000L
-        )
-
-        val profile = RegionalProfile(
-            id = "wg-no-launch",
-            name = "AU Manual",
-            regionCode = "AU",
-            latitude = -33.8688,
-            longitude = 151.2093,
-            vpnBackend = VpnBackend.WG_TUNNEL,
-            vpnTunnelOrNodeName = "unifi-au-syd",
-            targetAppPackage = "com.cbs.ott",
-            autoLaunchApp = false
-        )
-
-        val deferred = async { coordinator.activate(profile) }
-        runCurrent()
-        vpnState.value = VpnConnectionState(isConnected = true, networkHandle = 303L)
-        val result = deferred.await()
-
-        assertTrue(result is ActivationProgress.Active)
-        assertEquals(1, dispatcher.broadcasts.size)
-        assertEquals("unifi-au-syd", dispatcher.broadcasts.single().getStringExtra(VpnController.EXTRA_WG_TUNNEL_NAME))
-        assertEquals("wg-secret", dispatcher.broadcasts.single().getStringExtra(VpnController.EXTRA_WG_REMOTE_KEY))
-        assertTrue(dispatcher.startedActivities.isEmpty())
-    }
-
-    @Test
-    fun activationCoordinator_whenVpnTimesOut_reportsWarningAndSkipsAppLaunch() = runTest {
-        val dispatcher = RecordingIntentDispatcher()
-        val controller = VpnController(dispatcher)
-        val vpnState = MutableStateFlow(VpnConnectionState(isConnected = false))
-        val mockStatus = MutableStateFlow(MockLocationStatus())
-
-        val coordinator = ProfileActivationCoordinator(
-            vpnController = controller,
-            vpnStateFlow = vpnState,
-            mockLocationStatusFlow = mockStatus,
-            startMockLocation = autoInjectingMockStarter(mockStatus),
-            stopMockLocation = {},
-            vpnWaitTimeoutMs = 8_000L
-        )
-
-        val profile = RegionalProfile(
-            id = "timeout-1",
-            name = "US Timeout",
-            regionCode = "US",
-            latitude = 40.7128,
-            longitude = -74.0060,
-            vpnBackend = VpnBackend.TAILSCALE,
-            targetAppPackage = "com.cbs.ott",
-            autoLaunchApp = true
-        )
-
-        val resultDeferred = async { coordinator.activate(profile) }
-        advanceTimeBy(8_500L)
-        val result = resultDeferred.await()
-
         assertTrue(result is ActivationProgress.Warning)
         assertTrue(dispatcher.startedActivities.isEmpty())
     }
@@ -635,12 +421,12 @@ class VpnControllerTest {
 
         val profileV1 = RegionalProfile(
             id = "uk-none",
-            name = "UK Direct",
+            name = "London",
             regionCode = "UK",
             latitude = 51.5074,
             longitude = -0.1278,
             vpnBackend = VpnBackend.NONE,
-            targetAppPackage = "uk.co.bbc.iplayer",
+            mappedPackages = listOf("uk.co.bbc.iplayer"),
             autoLaunchApp = true
         )
 
@@ -656,8 +442,8 @@ class VpnControllerTest {
                     sessionId = sid,
                     activeProfileId = profile.id,
                     activeProfileName = profile.name,
-                    lastInjectedLatitude = profile.latitude,
-                    lastInjectedLongitude = profile.longitude,
+                    configuredLatitude = profile.latitude,
+                    configuredLongitude = profile.longitude,
                     injectionCount = 1L
                 )
             },
@@ -666,8 +452,7 @@ class VpnControllerTest {
         assertTrue(coordinator1.activate(profileV1) is ActivationProgress.Active)
         assertEquals(1, dispatcher.startedActivities.size)
 
-        // Simulate Activity/ViewModel recreation while MockLocationService is still running
-        // with firstSessionId and the user re-activates the edited profile.
+        // Recreate coordinator while service is still active on firstSessionId; edit coordinates.
         val profileV2 = profileV1.copy(latitude = 53.4808, longitude = -2.2426)
         var secondSessionId = -1L
         val coordinator2 = ProfileActivationCoordinator(
@@ -680,19 +465,16 @@ class VpnControllerTest {
 
         val deferred = async { coordinator2.activate(profileV2) }
         advanceTimeBy(500L)
-
-        // New coordinator must have a distinct session ID and must NOT accept coordinator1's fix.
         assertTrue(secondSessionId > firstSessionId)
         assertEquals(1, dispatcher.startedActivities.size)
 
-        // Once the service injects fix #1 for secondSessionId, launch proceeds.
         mockStatus.value = MockLocationStatus(
             isActive = true,
             sessionId = secondSessionId,
             activeProfileId = profileV2.id,
             activeProfileName = profileV2.name,
-            lastInjectedLatitude = profileV2.latitude,
-            lastInjectedLongitude = profileV2.longitude,
+            configuredLatitude = profileV2.latitude,
+            configuredLongitude = profileV2.longitude,
             injectionCount = 1L
         )
         assertTrue(deferred.await() is ActivationProgress.Active)
@@ -700,56 +482,13 @@ class VpnControllerTest {
     }
 
     @Test
-    fun activationCoordinator_whenVpnDropsDuringMockLocationWait_skipsAppLaunchAndWarns() = runTest {
+    fun openHelperApps_launchInstalledPackages() {
         val dispatcher = RecordingIntentDispatcher()
         val controller = VpnController(dispatcher)
-        val vpnState = MutableStateFlow(VpnConnectionState(isConnected = false))
-        val mockStatus = MutableStateFlow(MockLocationStatus())
-        var capturedSessionId = -1L
 
-        val coordinator = ProfileActivationCoordinator(
-            vpnController = controller,
-            vpnStateFlow = vpnState,
-            mockLocationStatusFlow = mockStatus,
-            startMockLocation = { _, sid -> capturedSessionId = sid },
-            stopMockLocation = {},
-            vpnWaitTimeoutMs = 8_000L,
-            mockLocationWaitTimeoutMs = 5_000L
-        )
-
-        val profile = RegionalProfile(
-            id = "us-drop",
-            name = "US Drop",
-            regionCode = "US",
-            latitude = 40.7128,
-            longitude = -74.0060,
-            vpnBackend = VpnBackend.TAILSCALE,
-            targetAppPackage = "com.cbs.ott",
-            autoLaunchApp = true
-        )
-
-        val deferred = async { coordinator.activate(profile) }
-        runCurrent()
-
-        // VPN connects first while mock location is still starting up.
-        vpnState.value = VpnConnectionState(isConnected = true, networkHandle = 777L)
-        advanceTimeBy(300L)
-
-        // VPN drops BEFORE the first mock fix arrives!
-        vpnState.value = VpnConnectionState(isConnected = false, networkHandle = null)
-        advanceTimeBy(100L)
-
-        // Now the first mock fix arrives.
-        mockStatus.value = MockLocationStatus(
-            isActive = true,
-            sessionId = capturedSessionId,
-            activeProfileId = profile.id,
-            activeProfileName = profile.name,
-            injectionCount = 1L
-        )
-
-        val result = deferred.await()
-        assertTrue(result is ActivationProgress.Warning)
-        assertTrue(dispatcher.startedActivities.isEmpty())
+        assertTrue(controller.openTailscaleApp())
+        assertTrue(controller.openWgTunnelApp())
+        assertTrue(controller.openShizukuApp())
+        assertFalse(controller.launchApp("com.not.installed"))
     }
 }

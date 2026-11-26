@@ -1,17 +1,22 @@
-# Tellyport
+# Tellyport (`tv.tellyport`)
 
-Tellyport is a Kotlin Android / Android TV application (targeting Google TV Streamer on Android 14 / API 34, `minSdk = 28`) built with Jetpack Compose and Compose for TV (`androidx.tv:tv-material`). It coordinates VPN/Tailscale connections, Android mock location injection, and automatic launching of regional streaming apps.
+**Watch TV anywhere.** Tellyport is a zero-touch Kotlin Android & Android TV application (targeting Google TV Streamer on Android 14 / API 34, `minSdk = 28`) built with Jetpack Compose and Compose for TV (`androidx.tv:tv-material`).
+
+When anyone in the household opens a mapped streaming app from the standard Google TV home screen, Tellyport silently intercepts the launch, force-stops the app (via Shizuku), switches VPN + mock GPS to the matching regional profile (**New York**, **London**, or **Sydney**), and relaunches the app cleanly—plus recovers Wireless Debugging & Shizuku automatically after device reboots.
 
 ## Architecture
 
-- **`tv.tellyport.data`**: `RegionalProfile`, `VpnBackend` (`TAILSCALE`, `WG_TUNNEL`, `NONE`), `ProfilePresets`, and `ProfileRepository` persisted via Jetpack DataStore with JSON serialization (`kotlinx.serialization`). Pre-seeded with editable US (New York), UK (London), and AU (Sydney) profiles.
-- **`tv.tellyport.location`**: `LocationPayloadFactory` (fresh epoch + `elapsedRealtimeNanos` timestamps and subtle < 2m realistic jitter), `MockLocationPermissionChecker` (`AppOpsManager` check, Developer Options deep link, and ADB one-liner), and `MockLocationState`.
-- **`tv.tellyport.service`**: `MockLocationService` (`foregroundServiceType="location"`) registering both `GPS_PROVIDER` and `NETWORK_PROVIDER` test providers (API 31+ `ProviderProperties` and API 28–30 fallback), pushing fixes every 1000ms, displaying a persistent notification with a "Stop" action, and removing providers in `onDestroy()`.
+- **`tv.tellyport.data`**: `RegionalProfile`, `VpnBackend` (`UNCONFIGURED`, `TAILSCALE`, `WG_TUNNEL`, `SOCKS_WRAPPER`, `NONE`), agnostic pre-seeded profiles (**New York**, **London**, **Sydney**) with default app mappings, single-Tailscale repository constraint, and Jetpack DataStore persistence for profiles, `ActiveVpnSession`, Home Auto-Disconnect settings, WG Tunnel key, and boot recovery diagnostics.
 - **`tv.tellyport.vpn`**:
-  - `VpnController`: explicit Tailscale broadcasts (`com.tailscale.ipn.IPNReceiver`: `CONNECT_VPN` / `DISCONNECT_VPN`), authenticated WG Tunnel broadcasts (`com.zaneschepke.wireguardautotunnel.core.broadcast.RemoteControlReceiver`: `START_TUNNEL` / `STOP_TUNNEL` with `key` and `tunnelName` extras), and fallback Tailscale / WG Tunnel launchers.
-  - `VpnNetworkMonitor`: `ConnectivityManager.NetworkCallback` observing `NetworkCapabilities.TRANSPORT_VPN` along with network handle and owner UID detection (API 30+).
-  - `ProfileActivationCoordinator`: coordinates teardown of conflicting VPN connections -> triggers VPN connect -> starts `MockLocationService` -> waits up to 8s for the requested VPN to become ready (or proceeds immediately if `NONE`) -> launches `targetAppPackage` if `autoLaunchApp` is enabled.
-- **`tv.tellyport.ui`**: D-Pad-first dark-mode TV dashboard (`DashboardScreen`), `DiagnosticsScreen`, and `ProfileEditorScreen` (with location & streaming app presets).
+  - `VpnBackendHeuristic` & `VpnNetworkMonitor`: observes `ConnectivityManager.NetworkCallback` (`TRANSPORT_VPN`) and inspects `LinkProperties` (`100.64.0.0/10` IPv4 or `100.100.100.100` MagicDNS) to infer Tailscale without relying on redacted Android 14 `ownerUid`.
+  - `VpnController`: explicit Tailscale intents (`com.tailscale.ipn.IPNReceiver`), authenticated WG Tunnel intents (`RemoteControlReceiver`: `START_TUNNEL` / `STOP_TUNNEL` with `key` and `tunnelName`), and `SOCKS_WRAPPER` intents.
+  - `ProfileActivationCoordinator`: combines live `ConnectivityManager` state, persisted `ActiveVpnSession`, and `LinkProperties` heuristic for fast-path acceptance, dual-backend conflict teardown (4s `onLost` wait), and 8s connect + 500ms stabilization + clean relaunch (`FLAG_ACTIVITY_NEW_TASK or FLAG_ACTIVITY_CLEAR_TASK`).
+- **`tv.tellyport.accessibility`**: `AppLaunchAccessibilityService` (`TYPE_WINDOW_STATE_CHANGED` only, `canRetrieveWindowContent="false"`) and `AppLaunchInterceptionEngine` (filtering, mutex/debounce, Home Launcher auto-disconnect grace timer, `GLOBAL_ACTION_HOME` -> force-stop -> reconcile -> relaunch).
+- **`tv.tellyport.shizuku` & `tv.tellyport.boot`**: `ShizukuForceStopper` (`IActivityManager.forceStopPackage` via Shizuku binder with `ActivityManager.killBackgroundProcesses` fallback), `BootRecoveryReceiver` (`BOOT_COMPLETED`), and `ShizukuBootHelper` (waits for Wi-Fi/Ethernet up to 60s, sets `adb_wifi_enabled=1`, checks/wakes Shizuku, records diagnostics).
+- **`tv.tellyport.location` & `tv.tellyport.service`**: `MockLocationService` (`foregroundServiceType="location"`) pushing 1Hz `GPS_PROVIDER` + `NETWORK_PROVIDER` fixes with fresh timestamps and <2m jitter, process-scoped session IDs, and synchronized cleanup on `onDestroy()`.
+- **`tv.tellyport.ui`**: D-Pad-first dark Google TV `DashboardScreen`, `DiagnosticsScreen`, and `ProfileEditorScreen` (with single-Tailscale UX guardrail and multi-app mapping picker).
+
+See [ROADMAP.md](ROADMAP.md) for planned future enhancements including native `libtailscale` (`gomobile` `.aar`) evaluation.
 
 ## Build & Test
 
@@ -21,18 +26,24 @@ Tellyport is a Kotlin Android / Android TV application (targeting Google TV Stre
 
 Debug APK output: `app/build/outputs/apk/debug/app-debug.apk`
 
-## Google TV Streamer Setup (Android 14 / API 34)
+## One-Time Google TV Streamer Setup (Android 14 / API 34)
 
-1. Install the APK over ADB:
-   ```bash
-   adb install -r app/build/outputs/apk/debug/app-debug.apk
-   ```
-2. Grant mock location authorization (either via **Settings → System → Developer Options → Select mock location app → Tellyport**, or via ADB):
-   ```bash
-   adb shell appops set tv.tellyport android:mock_location allow
-   ```
-3. Grant runtime location permission when prompted (or via ADB):
-   ```bash
-   adb shell pm grant tv.tellyport android.permission.ACCESS_FINE_LOCATION
-   ```
-4. *(If using WG Tunnel)* Enable **Remote App Control** in WG Tunnel → Settings, copy the generated key, and save it in Tellyport's **Setup & Diagnostics** screen (or while editing a WG Tunnel profile).
+```bash
+# 1. Install Tellyport
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+
+# 2. Grant Mock Location AppOps
+adb shell appops set tv.tellyport android:mock_location allow
+
+# 3. Grant Runtime Location Permission
+adb shell pm grant tv.tellyport android.permission.ACCESS_FINE_LOCATION
+
+# 4. Enable Accessibility App Launch Interceptor
+adb shell settings put secure enabled_accessibility_services tv.tellyport/tv.tellyport.accessibility.AppLaunchAccessibilityService
+adb shell settings put secure accessibility_enabled 1
+
+# 5. Grant WRITE_SECURE_SETTINGS for Automatic Post-Reboot Wireless Debugging Recovery
+adb shell pm grant tv.tellyport android.permission.WRITE_SECURE_SETTINGS
+```
+
+6. Open **Tellyport → Setup & Diagnostics** to authorize **Shizuku**, configure your **WG Tunnel Remote Control Key** (if using WG Tunnel), and assign a VPN backend to each city profile.

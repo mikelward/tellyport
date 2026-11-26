@@ -7,6 +7,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.ViewModelProvider
+import rikka.shizuku.Shizuku
 import tv.tellyport.ui.TellyportApp
 import tv.tellyport.ui.TellyportViewModel
 
@@ -20,6 +21,10 @@ class MainActivity : ComponentActivity() {
         viewModel.refreshDiagnostics()
     }
 
+    private val shizukuPermissionListener = Shizuku.OnRequestPermissionResultListener { _, _ ->
+        viewModel.refreshDiagnostics()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -28,6 +33,8 @@ class MainActivity : ComponentActivity() {
             this,
             TellyportViewModel.Factory(app)
         )[TellyportViewModel::class.java]
+
+        Shizuku.addRequestPermissionResultListener(shizukuPermissionListener)
 
         setContent {
             TellyportApp(
@@ -41,6 +48,11 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         viewModel.refreshDiagnostics()
+    }
+
+    override fun onDestroy() {
+        Shizuku.removeRequestPermissionResultListener(shizukuPermissionListener)
+        super.onDestroy()
     }
 
     private fun requestLocationPermissions() {
