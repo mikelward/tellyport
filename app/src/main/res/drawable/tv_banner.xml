@@ -1,0 +1,51 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="320dp"
+    android:height="180dp"
+    android:viewportWidth="320"
+    android:viewportHeight="180">
+    <!-- Deep obsidian background -->
+    <path
+        android:fillColor="#0B0F19"
+        android:pathData="M0,0h320v180h-320z" />
+    <!-- Subtle diagonal accent ribbon -->
+    <path
+        android:fillColor="#131E33"
+        android:pathData="M0,120 L320,30 L320,180 L0,180 Z" />
+    <!-- Stylized globe / warp rings -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M86,90 m-36,0 a36,36 0 1,0 72,0 a36,36 0 1,0 -72,0"
+        android:strokeWidth="4"
+        android:strokeColor="#38BDF8" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M86,90 m-18,0 a18,36 0 1,0 36,0 a18,36 0 1,0 -36,0"
+        android:strokeWidth="3"
+        android:strokeColor="#22D3EE" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M50,90 L122,90"
+        android:strokeWidth="3"
+        android:strokeColor="#38BDF8" />
+    <!-- Location pin dot -->
+    <path
+        android:fillColor="#22C55E"
+        android:pathData="M110,66 m-7,0 a7,7 0 1,0 14,0 a7,7 0 1,0 -14,0" />
+    <!-- Minimalist W monogram block for TV banner -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M150,64 L164,116 L178,78 L192,116 L206,64"
+        android:strokeWidth="8"
+        android:strokeColor="#F8FAFC"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:fillColor="#38BDF8"
+        android:pathData="M222,108 L272,108 L272,116 L222,116 Z" />
+    <path
+        android:fillColor="#94A3B8"
+        android:pathData="M222,88 L260,88 L260,94 L222,94 Z" />
+    <path
+        android:fillColor="#64748B"
+        android:pathData="M222,72 L250,72 L250,78 L222,78 Z" />
+</vector>
