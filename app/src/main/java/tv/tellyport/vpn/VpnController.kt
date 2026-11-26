@@ -42,17 +42,14 @@ class AndroidIntentDispatcher(
 }
 
 /**
- * Coordinates VPN connect/disconnect broadcasts for Tailscale and WG Tunnel,
- * plus fallback launching of the Tailscale / WG Tunnel UIs.
+ * Coordinates VPN connect/disconnect broadcasts for Tailscale, WG Tunnel, and SOCKS Wrapper,
+ * plus fallback launching of VPN / Shizuku / streaming apps.
  */
 class VpnController(
     private val dispatcher: IntentDispatcher
 ) {
     constructor(context: Context) : this(AndroidIntentDispatcher(context.applicationContext))
 
-    /**
-     * Builds the explicit broadcast [Intent] to connect Tailscale.
-     */
     fun buildTailscaleConnectIntent(): Intent {
         return Intent(ACTION_TAILSCALE_CONNECT).apply {
             `package` = TAILSCALE_PACKAGE
@@ -60,9 +57,6 @@ class VpnController(
         }
     }
 
-    /**
-     * Builds the explicit broadcast [Intent] to disconnect Tailscale.
-     */
     fun buildTailscaleDisconnectIntent(): Intent {
         return Intent(ACTION_TAILSCALE_DISCONNECT).apply {
             `package` = TAILSCALE_PACKAGE
@@ -93,9 +87,6 @@ class VpnController(
 
     /**
      * Builds the explicit authenticated broadcast [Intent] to stop a WG Tunnel tunnel.
-     *
-     * Returns `null` if [remoteControlKey] is blank because WG Tunnel rejects unauthenticated
-     * remote-control requests.
      */
     fun buildWgTunnelDisconnectIntent(tunnelName: String?, remoteControlKey: String?): Intent? {
         val trimmedKey = remoteControlKey?.trim().orEmpty()
@@ -112,45 +103,59 @@ class VpnController(
     }
 
     /**
-     * Builds the connect broadcast [Intent] for the given [backend], or null for [VpnBackend.NONE]
-     * or when [VpnBackend.WG_TUNNEL] lacks a configured [wgRemoteControlKey].
+     * Builds the broadcast [Intent] to start a SOCKS Wrapper tunnel profile.
      */
+    fun buildSocksWrapperConnectIntent(tunnelName: String?): Intent {
+        return Intent(ACTION_SOCKS_WRAPPER_CONNECT).apply {
+            `package` = SOCKS_WRAPPER_PACKAGE
+            if (!tunnelName.isNullOrBlank()) {
+                putExtra(EXTRA_SOCKS_PROFILE_NAME, tunnelName.trim())
+            }
+        }
+    }
+
+    /**
+     * Builds the broadcast [Intent] to stop a SOCKS Wrapper tunnel profile.
+     */
+    fun buildSocksWrapperDisconnectIntent(tunnelName: String?): Intent {
+        return Intent(ACTION_SOCKS_WRAPPER_DISCONNECT).apply {
+            `package` = SOCKS_WRAPPER_PACKAGE
+            if (!tunnelName.isNullOrBlank()) {
+                putExtra(EXTRA_SOCKS_PROFILE_NAME, tunnelName.trim())
+            }
+        }
+    }
+
     fun buildConnectIntent(
         backend: VpnBackend,
-        tunnelOrNodeName: String? = null,
+        tunnelName: String? = null,
         wgRemoteControlKey: String? = null
     ): Intent? {
         return when (backend) {
             VpnBackend.TAILSCALE -> buildTailscaleConnectIntent()
-            VpnBackend.WG_TUNNEL -> buildWgTunnelConnectIntent(tunnelOrNodeName, wgRemoteControlKey)
-            VpnBackend.NONE -> null
+            VpnBackend.WG_TUNNEL -> buildWgTunnelConnectIntent(tunnelName, wgRemoteControlKey)
+            VpnBackend.SOCKS_WRAPPER -> buildSocksWrapperConnectIntent(tunnelName)
+            VpnBackend.NONE, VpnBackend.UNCONFIGURED -> null
         }
     }
 
-    /**
-     * Builds the disconnect broadcast [Intent] for the given [backend], or null for [VpnBackend.NONE]
-     * or when [VpnBackend.WG_TUNNEL] lacks a configured [wgRemoteControlKey].
-     */
     fun buildDisconnectIntent(
         backend: VpnBackend,
-        tunnelOrNodeName: String? = null,
+        tunnelName: String? = null,
         wgRemoteControlKey: String? = null
     ): Intent? {
         return when (backend) {
             VpnBackend.TAILSCALE -> buildTailscaleDisconnectIntent()
-            VpnBackend.WG_TUNNEL -> buildWgTunnelDisconnectIntent(tunnelOrNodeName, wgRemoteControlKey)
-            VpnBackend.NONE -> null
+            VpnBackend.WG_TUNNEL -> buildWgTunnelDisconnectIntent(tunnelName, wgRemoteControlKey)
+            VpnBackend.SOCKS_WRAPPER -> buildSocksWrapperDisconnectIntent(tunnelName)
+            VpnBackend.NONE, VpnBackend.UNCONFIGURED -> null
         }
     }
 
-    /**
-     * Sends the appropriate VPN connect broadcast for [profile]. Returns the dispatched [Intent],
-     * or null when [RegionalProfile.vpnBackend] is [VpnBackend.NONE] or missing required WG key.
-     */
     fun connect(profile: RegionalProfile, wgRemoteControlKey: String? = null): Intent? {
         val intent = buildConnectIntent(
             backend = profile.vpnBackend,
-            tunnelOrNodeName = profile.vpnTunnelOrNodeName,
+            tunnelName = profile.tunnelName,
             wgRemoteControlKey = wgRemoteControlKey
         )
         if (intent != null) {
@@ -159,15 +164,12 @@ class VpnController(
         return intent
     }
 
-    /**
-     * Sends the disconnect broadcast for a specific [backend] and optional [tunnelOrNodeName].
-     */
     fun disconnect(
         backend: VpnBackend,
-        tunnelOrNodeName: String? = null,
+        tunnelName: String? = null,
         wgRemoteControlKey: String? = null
     ): Intent? {
-        val intent = buildDisconnectIntent(backend, tunnelOrNodeName, wgRemoteControlKey)
+        val intent = buildDisconnectIntent(backend, tunnelName, wgRemoteControlKey)
         if (intent != null) {
             dispatcher.sendBroadcast(intent)
         }
@@ -175,27 +177,26 @@ class VpnController(
     }
 
     /**
-     * Sends disconnect broadcasts for Tailscale and (when [wgRemoteControlKey] is configured)
-     * WG Tunnel when the user triggers "Disconnect All".
+     * Sends disconnect broadcasts to Tailscale and (when [wgRemoteControlKey] is configured)
+     * WG Tunnel — plus optionally SOCKS Wrapper — so whichever app owns an unattributed
+     * `TRANSPORT_VPN` tunnel tears it down cleanly.
      */
     fun disconnectAll(
         activeWgTunnelName: String? = null,
-        wgRemoteControlKey: String? = null
+        wgRemoteControlKey: String? = null,
+        includeSocksWrapper: Boolean = false
     ): List<Intent> {
         return disconnectAll(
             wgTunnelNames = listOf(activeWgTunnelName),
-            wgRemoteControlKey = wgRemoteControlKey
+            wgRemoteControlKey = wgRemoteControlKey,
+            includeSocksWrapper = includeSocksWrapper
         )
     }
 
-    /**
-     * Sends disconnect broadcasts for Tailscale and every distinct WG Tunnel name in [wgTunnelNames]
-     * (when [wgRemoteControlKey] is configured). Passing an empty collection defaults to stopping
-     * the primary WG tunnel (`tunnelName` omitted).
-     */
     fun disconnectAll(
         wgTunnelNames: Collection<String?>,
-        wgRemoteControlKey: String? = null
+        wgRemoteControlKey: String? = null,
+        includeSocksWrapper: Boolean = false
     ): List<Intent> {
         val normalizedNames = wgTunnelNames
             .map { it?.trim()?.ifEmpty { null } }
@@ -207,34 +208,43 @@ class VpnController(
             normalizedNames.forEach { tunnelName ->
                 buildWgTunnelDisconnectIntent(tunnelName, wgRemoteControlKey)?.let { add(it) }
             }
+            if (includeSocksWrapper) {
+                add(buildSocksWrapperDisconnectIntent(null))
+            }
         }
         intents.forEach { dispatcher.sendBroadcast(it) }
         return intents
     }
 
-    /**
-     * Opens the Tailscale app directly so the user can pick or verify the active Exit Node.
-     */
     fun openTailscaleApp(): Boolean {
         val intent = dispatcher.resolveLaunchIntent(TAILSCALE_PACKAGE) ?: return false
         return dispatcher.startActivity(intent)
     }
 
-    /**
-     * Opens the WG Tunnel app directly so the user can enable Remote App Control and copy the key.
-     */
     fun openWgTunnelApp(): Boolean {
         val intent = dispatcher.resolveLaunchIntent(WG_TUNNEL_PACKAGE) ?: return false
         return dispatcher.startActivity(intent)
     }
 
+    fun openShizukuApp(): Boolean {
+        val intent = dispatcher.resolveLaunchIntent(SHIZUKU_PACKAGE) ?: return false
+        return dispatcher.startActivity(intent)
+    }
+
     /**
      * Launches a target streaming app package (preferring TV Leanback launcher when available).
+     * When [clearTask] is true (e.g., after intercepting and force-stopping an app), sets
+     * `FLAG_ACTIVITY_NEW_TASK or FLAG_ACTIVITY_CLEAR_TASK` so the app restarts cleanly.
      */
-    fun launchApp(packageName: String): Boolean {
+    fun launchApp(packageName: String, clearTask: Boolean = false): Boolean {
         val trimmed = packageName.trim()
         if (trimmed.isEmpty()) return false
         val intent = dispatcher.resolveLaunchIntent(trimmed) ?: return false
+        if (clearTask) {
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+        } else {
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
         return dispatcher.startActivity(intent)
     }
 
@@ -251,5 +261,12 @@ class VpnController(
         const val ACTION_WG_TUNNEL_DISCONNECT = "com.zaneschepke.wireguardautotunnel.STOP_TUNNEL"
         const val EXTRA_WG_TUNNEL_NAME = "tunnelName"
         const val EXTRA_WG_REMOTE_KEY = "key"
+
+        const val SOCKS_WRAPPER_PACKAGE = "tv.tellyport.socks"
+        const val ACTION_SOCKS_WRAPPER_CONNECT = "tv.tellyport.socks.action.CONNECT"
+        const val ACTION_SOCKS_WRAPPER_DISCONNECT = "tv.tellyport.socks.action.DISCONNECT"
+        const val EXTRA_SOCKS_PROFILE_NAME = "profile_name"
+
+        const val SHIZUKU_PACKAGE = "moe.shizuku.privileged.api"
     }
 }

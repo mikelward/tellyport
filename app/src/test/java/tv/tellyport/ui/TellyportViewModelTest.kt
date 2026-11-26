@@ -4,19 +4,6 @@ import android.content.Context
 import android.content.Intent
 import androidx.datastore.core.DataStoreFactory
 import androidx.test.core.app.ApplicationProvider
-import tv.tellyport.data.ProfileRepository
-import tv.tellyport.data.ProfileStoreSerializer
-import tv.tellyport.data.RegionalProfile
-import tv.tellyport.data.VpnBackend
-import tv.tellyport.location.MockLocationPermissionChecker
-import tv.tellyport.location.MockLocationPermissionStatus
-import tv.tellyport.location.MockLocationState
-import tv.tellyport.location.MockLocationStatus
-import tv.tellyport.vpn.ActivationProgress
-import tv.tellyport.vpn.IntentDispatcher
-import tv.tellyport.vpn.VpnConnectionState
-import tv.tellyport.vpn.VpnController
-import tv.tellyport.vpn.VpnNetworkMonitor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -40,6 +27,22 @@ import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import tv.tellyport.data.ProfileRepository
+import tv.tellyport.data.ProfileStoreSerializer
+import tv.tellyport.data.RegionalProfile
+import tv.tellyport.data.VpnBackend
+import tv.tellyport.location.MockLocationPermissionChecker
+import tv.tellyport.location.MockLocationPermissionStatus
+import tv.tellyport.location.MockLocationState
+import tv.tellyport.location.MockLocationStatus
+import tv.tellyport.shizuku.ShizukuForceStopper
+import tv.tellyport.shizuku.ShizukuStatus
+import tv.tellyport.vpn.ActivationProgress
+import tv.tellyport.vpn.IntentDispatcher
+import tv.tellyport.vpn.ProfileActivationCoordinator
+import tv.tellyport.vpn.VpnConnectionState
+import tv.tellyport.vpn.VpnController
+import tv.tellyport.vpn.VpnNetworkMonitor
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
@@ -98,6 +101,28 @@ class TellyportViewModelTest {
         val mockStatus = MutableStateFlow(MockLocationStatus())
         var stopMockCount = 0
 
+        val coordinator = ProfileActivationCoordinator(
+            vpnController = vpnController,
+            vpnStateFlow = vpnState,
+            mockLocationStatusFlow = mockStatus,
+            startMockLocation = { profile, sessionId ->
+                mockStatus.value = MockLocationStatus(
+                    isActive = true,
+                    sessionId = sessionId,
+                    activeProfileId = profile.id,
+                    activeProfileName = profile.name,
+                    configuredLatitude = profile.latitude,
+                    configuredLongitude = profile.longitude,
+                    injectionCount = 1L
+                )
+            },
+            stopMockLocation = { stopMockCount++ },
+            wgRemoteControlKeyProvider = { "wg-key-delete-test" },
+            persistedSessionProvider = { repository.getActiveSessionSnapshot() },
+            persistActiveSession = { repository.setActiveSession(it) },
+            vpnWaitTimeoutMs = 8_000L
+        )
+
         val readyPermissions = MockLocationPermissionStatus(
             isMockLocationAppSelected = true,
             hasFineLocationPermission = true,
@@ -111,20 +136,13 @@ class TellyportViewModelTest {
             vpnController = vpnController,
             vpnNetworkMonitor = VpnNetworkMonitor(context),
             permissionChecker = MockLocationPermissionChecker(context),
-            startMockLocation = { profile, sessionId ->
-                mockStatus.value = MockLocationStatus(
-                    isActive = true,
-                    sessionId = sessionId,
-                    activeProfileId = profile.id,
-                    activeProfileName = profile.name,
-                    injectionCount = 1L
-                )
-            },
-            stopMockLocation = { stopMockCount++ },
+            shizukuForceStopper = ShizukuForceStopper(context),
+            coordinator = coordinator,
             vpnStateFlow = vpnState,
             mockLocationStatusFlow = mockStatus,
             permissionStatusProvider = { readyPermissions },
-            vpnWaitTimeoutMs = 8_000L
+            shizukuStatusProvider = { ShizukuStatus(false, false, false) },
+            loadInstalledApps = { emptyList() }
         )
 
         try {
@@ -133,34 +151,29 @@ class TellyportViewModelTest {
 
             val targetProfile = RegionalProfile(
                 id = "pending-au",
-                name = "Pending AU",
+                name = "Pending Sydney",
                 regionCode = "AU",
                 latitude = -33.8688,
                 longitude = 151.2093,
                 vpnBackend = VpnBackend.WG_TUNNEL,
-                vpnTunnelOrNodeName = "unifi-au-syd",
-                targetAppPackage = "com.amazon.avod.thirdpartyclient",
+                tunnelName = "unifi-au-syd",
+                mappedPackages = listOf("au.com.stan.and"),
                 autoLaunchApp = true
             )
             repository.upsertProfile(targetProfile)
             runCurrent()
 
-            // Start activation (now waiting for WG Tunnel "unifi-au-syd" up to 8s).
             viewModel.activateProfile(targetProfile)
             advanceTimeBy(1_000L)
             runCurrent()
 
-            // Delete the profile while activation is still waiting for the VPN.
             viewModel.deleteProfile(targetProfile)
             runCurrent()
 
-            // Verify STOP_TUNNEL targeted the exact pending named tunnel "unifi-au-syd".
             val wgStop = dispatcher.broadcasts.last { it.action == VpnController.ACTION_WG_TUNNEL_DISCONNECT }
             assertEquals("unifi-au-syd", wgStop.getStringExtra(VpnController.EXTRA_WG_TUNNEL_NAME))
             assertEquals("wg-key-delete-test", wgStop.getStringExtra(VpnController.EXTRA_WG_REMOTE_KEY))
 
-            // Even if VPN subsequently connects and the full timeout elapses, the deleted
-            // profile must stay cancelled: no app launch, progress remains Idle, mock stopped.
             vpnState.value = VpnConnectionState(isConnected = true, networkHandle = 500L)
             advanceTimeBy(10_000L)
             runCurrent()

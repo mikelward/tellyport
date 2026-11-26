@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.AccessibilityNew
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.DeveloperMode
 import androidx.compose.material.icons.rounded.MyLocation
@@ -24,9 +25,12 @@ import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Restore
 import androidx.compose.material.icons.rounded.Save
+import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material.icons.rounded.VpnKey
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -45,6 +49,7 @@ import androidx.tv.material3.Text
 import tv.tellyport.ui.components.StatusPill
 import tv.tellyport.ui.components.TellyportPrimaryButton
 import tv.tellyport.ui.components.TellyportSecondaryButton
+import tv.tellyport.ui.components.TellyportSelectableChip
 import tv.tellyport.ui.theme.TellyportColors
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -57,12 +62,16 @@ fun DiagnosticsScreen(
     onBack: () -> Unit,
     onRefresh: () -> Unit,
     onOpenDeveloperOptions: () -> Unit,
-    onCopyAdbCommand: () -> Unit,
+    onOpenAccessibilitySettings: () -> Unit,
+    onCopyCommand: (String, String) -> Unit,
     onRequestLocationPermission: () -> Unit,
     onRequestNotificationPermission: () -> Unit,
+    onRequestShizukuPermission: () -> Unit,
+    onOpenShizuku: () -> Unit,
     onOpenTailscale: () -> Unit,
     onOpenWgTunnel: () -> Unit,
     onSaveWgRemoteControlKey: (String) -> Unit,
+    onUpdateAutoDisconnect: (Boolean, Int) -> Unit,
     onTestTailscaleConnect: () -> Unit,
     onTestTailscaleDisconnect: () -> Unit,
     onResetDefaultProfiles: () -> Unit
@@ -101,7 +110,7 @@ fun DiagnosticsScreen(
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "Mock Location AppOps, VPN Transport, WG Tunnel Key, and Live Telemetry",
+                        text = "Zero-Touch Permissions, Shizuku, Boot Recovery, VPN LinkProperties, and Telemetry",
                         color = TellyportColors.TextSecondary,
                         fontSize = 13.sp
                     )
@@ -115,86 +124,113 @@ fun DiagnosticsScreen(
             )
         }
 
-        // Section 1: Mock Location & Runtime Permissions
-        DiagnosticsCard(title = "Mock Location & Permissions") {
+        // Section 1: Setup & Permissions (One-time ADB commands + Settings Deep Links)
+        DiagnosticsCard(title = "Setup & Permissions (tv.tellyport)") {
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 StatusPill(
                     label = if (state.permissionStatus.isMockLocationAppSelected) {
-                        "Mock Location App: Granted"
+                        "Mock Location: Granted"
                     } else {
-                        "Mock Location App: Not Selected"
+                        "Mock Location: Not Selected"
                     },
                     active = state.permissionStatus.isMockLocationAppSelected
                 )
                 StatusPill(
                     label = if (state.permissionStatus.hasFineLocationPermission) {
-                        "ACCESS_FINE_LOCATION: Granted"
+                        "Fine Location: Granted"
                     } else {
-                        "ACCESS_FINE_LOCATION: Missing"
+                        "Fine Location: Missing"
                     },
                     active = state.permissionStatus.hasFineLocationPermission
                 )
                 StatusPill(
-                    label = if (state.permissionStatus.hasNotificationPermission) {
-                        "Notifications: Granted"
+                    label = if (state.permissionStatus.isAccessibilityEnabled) {
+                        "Accessibility Interceptor: Active"
                     } else {
-                        "Notifications: Missing"
+                        "Accessibility Interceptor: Off"
                     },
-                    active = state.permissionStatus.hasNotificationPermission
+                    active = state.permissionStatus.isAccessibilityEnabled
+                )
+                StatusPill(
+                    label = if (state.permissionStatus.hasWriteSecureSettingsPermission) {
+                        "WRITE_SECURE_SETTINGS: Granted"
+                    } else {
+                        "WRITE_SECURE_SETTINGS: Missing"
+                    },
+                    active = state.permissionStatus.hasWriteSecureSettingsPermission
+                )
+                StatusPill(
+                    label = when {
+                        state.shizukuStatus.isReady -> "Shizuku: Authorized"
+                        state.shizukuStatus.isBinderAlive -> "Shizuku: Binder Online (Unauth)"
+                        state.shizukuStatus.isInstalled -> "Shizuku: Installed (Offline)"
+                        else -> "Shizuku: Not Installed"
+                    },
+                    active = state.shizukuStatus.isReady
                 )
             }
 
-            Spacer(Modifier.height(4.dp))
-
-            Text(
-                text = "ADB One-Liner (for Google TV Streamer / Android 14):",
-                color = TellyportColors.TextSecondary,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold
+            AdbCommandRow(
+                label = "1. Mock Location AppOps:",
+                command = state.permissionStatus.adbCommand,
+                onCopy = { onCopyCommand("Mock Location ADB", state.permissionStatus.adbCommand) }
             )
 
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(TellyportColors.Background)
-                    .padding(12.dp)
-            ) {
-                Text(
-                    text = state.permissionStatus.adbCommand,
-                    color = TellyportColors.Primary,
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 13.sp
-                )
-            }
+            AdbCommandRow(
+                label = "2. Accessibility App Interceptor:",
+                command = state.permissionStatus.adbAccessibilityCommand,
+                onCopy = {
+                    onCopyCommand("Accessibility ADB", state.permissionStatus.adbAccessibilityCommand)
+                }
+            )
+
+            AdbCommandRow(
+                label = "3. Boot Wireless Debugging Recovery (WRITE_SECURE_SETTINGS):",
+                command = state.permissionStatus.adbWriteSecureSettingsCommand,
+                onCopy = {
+                    onCopyCommand(
+                        "WRITE_SECURE_SETTINGS ADB",
+                        state.permissionStatus.adbWriteSecureSettingsCommand
+                    )
+                }
+            )
 
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 TellyportPrimaryButton(
-                    text = "Open Developer Options",
+                    text = "Developer Options",
                     icon = Icons.Rounded.DeveloperMode,
                     onClick = onOpenDeveloperOptions
                 )
                 TellyportSecondaryButton(
-                    text = "Copy ADB Command",
-                    icon = Icons.Rounded.ContentCopy,
-                    onClick = onCopyAdbCommand
+                    text = "Accessibility Settings",
+                    icon = Icons.Rounded.AccessibilityNew,
+                    onClick = onOpenAccessibilitySettings
+                )
+                TellyportSecondaryButton(
+                    text = "Authorize Shizuku",
+                    icon = Icons.Rounded.Security,
+                    onClick = onRequestShizukuPermission
+                )
+                TellyportSecondaryButton(
+                    text = "Open Shizuku",
+                    onClick = onOpenShizuku
                 )
                 if (!state.permissionStatus.hasFineLocationPermission) {
                     TellyportSecondaryButton(
-                        text = "Request Location Permission",
+                        text = "Grant Location",
                         icon = Icons.Rounded.MyLocation,
                         onClick = onRequestLocationPermission
                     )
                 }
                 if (!state.permissionStatus.hasNotificationPermission) {
                     TellyportSecondaryButton(
-                        text = "Request Notifications",
+                        text = "Grant Notifications",
                         icon = Icons.Rounded.Notifications,
                         onClick = onRequestNotificationPermission
                     )
@@ -202,17 +238,83 @@ fun DiagnosticsScreen(
             }
         }
 
-        // Section 2: VPN Transport Monitor & Tailscale Controls
-        DiagnosticsCard(title = "VPN Transport State (ConnectivityManager)") {
+        // Section 2: Global Auto-Disconnect on Home Launcher
+        DiagnosticsCard(title = "Home Launcher Auto-Disconnect") {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Auto-Disconnect when returning to Home Launcher",
+                        color = TellyportColors.TextPrimary,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = "Automatically stops mock location and disconnects VPNs after staying on the Google TV Home screen.",
+                        color = TellyportColors.TextSecondary,
+                        fontSize = 12.sp
+                    )
+                }
+                Switch(
+                    checked = state.autoDisconnectSettings.enabled,
+                    onCheckedChange = { enabled ->
+                        onUpdateAutoDisconnect(enabled, state.autoDisconnectSettings.gracePeriodSeconds)
+                    },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = TellyportColors.OnPrimary,
+                        checkedTrackColor = TellyportColors.Primary
+                    )
+                )
+            }
+
+            Text(
+                text = "Grace Period:",
+                color = TellyportColors.TextSecondary,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                listOf(15, 30, 60, 120, 300).forEach { seconds ->
+                    TellyportSelectableChip(
+                        label = "${seconds}s",
+                        selected = state.autoDisconnectSettings.gracePeriodSeconds == seconds,
+                        onClick = {
+                            onUpdateAutoDisconnect(state.autoDisconnectSettings.enabled, seconds)
+                        }
+                    )
+                }
+            }
+        }
+
+        // Section 3: VPN Transport State & Persisted Session
+        DiagnosticsCard(title = "VPN Transport State & Session Recovery") {
             DiagnosticRow(
                 label = "TRANSPORT_VPN",
                 value = if (state.vpnState.isConnected) "ACTIVE (Connected)" else "INACTIVE (Disconnected)",
                 valueColor = if (state.vpnState.isConnected) TellyportColors.Success else TellyportColors.TextSecondary
             )
             DiagnosticRow(
-                label = "Detected VPN Owner",
-                value = state.vpnState.ownerBackend?.displayName
-                    ?: if (state.vpnState.isConnected) "Unknown / Other VPN" else "None"
+                label = "LinkProperties Heuristic",
+                value = state.vpnState.inferredBackend.displayName,
+                valueColor = if (state.vpnState.isConnected) TellyportColors.Primary else TellyportColors.TextSecondary
+            )
+            DiagnosticRow(
+                label = "VPN IPv4 Address(es)",
+                value = state.vpnState.ipv4Addresses.joinToString(", ").ifBlank { "None" },
+                monospace = true
+            )
+            DiagnosticRow(
+                label = "Persisted Active Session",
+                value = state.activeSession?.let { s ->
+                    val name = state.profiles.firstOrNull { it.id == s.profileId }?.name ?: s.profileId
+                    "$name (${s.vpnBackend.displayName})"
+                } ?: "None"
             )
             DiagnosticRow(
                 label = "Tunnel Interface",
@@ -245,7 +347,7 @@ fun DiagnosticsScreen(
             }
         }
 
-        // Section 3: WG Tunnel Remote Control Authentication
+        // Section 4: WG Tunnel Remote Control Authentication
         DiagnosticsCard(title = "WG Tunnel Remote App Control") {
             StatusPill(
                 label = if (state.wgRemoteControlKey.isNotBlank()) {
@@ -296,7 +398,44 @@ fun DiagnosticsScreen(
             }
         }
 
-        // Section 4: Live Mock Location Telemetry
+        // Section 5: Boot Recovery Diagnostics
+        DiagnosticsCard(title = "Last Boot Recovery Diagnostics") {
+            val boot = state.bootRecoveryDiagnostics
+            if (boot == null) {
+                Text(
+                    text = "No reboot recovery run recorded yet. Runs automatically on BOOT_COMPLETED.",
+                    color = TellyportColors.TextSecondary,
+                    fontSize = 13.sp
+                )
+            } else {
+                DiagnosticRow(
+                    label = "Recorded At",
+                    value = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date(boot.timestampEpochMs)),
+                    monospace = true
+                )
+                DiagnosticRow(
+                    label = "Network",
+                    value = if (boot.networkConnected) "Connected (${boot.networkType})" else boot.networkType
+                )
+                DiagnosticRow(
+                    label = "adb_wifi_enabled",
+                    value = if (boot.adbWifiEnabled) "Enabled (1)" else "Not Set",
+                    valueColor = if (boot.adbWifiEnabled) TellyportColors.Success else TellyportColors.Warning
+                )
+                DiagnosticRow(
+                    label = "Shizuku Binder",
+                    value = if (boot.shizukuRunning) "Online" else if (boot.shizukuStartAttempted) "Offline (Wake Attempted)" else "Offline",
+                    valueColor = if (boot.shizukuRunning) TellyportColors.Success else TellyportColors.Warning
+                )
+                Text(
+                    text = boot.message,
+                    color = TellyportColors.TextSecondary,
+                    fontSize = 12.sp
+                )
+            }
+        }
+
+        // Section 6: Live Mock Location Telemetry
         DiagnosticsCard(title = "Mock Location Injection Telemetry") {
             val mock = state.mockLocationStatus
             DiagnosticRow(
@@ -353,10 +492,10 @@ fun DiagnosticsScreen(
             }
         }
 
-        // Section 5: Profile Maintenance
+        // Section 7: Profile Maintenance
         DiagnosticsCard(title = "Profile Maintenance") {
             Text(
-                text = "Restore the pre-seeded US (New York), UK (London), and AU (Sydney) regional profiles.",
+                text = "Restore the pre-seeded New York, London, and Sydney regional profiles with default streaming app mappings.",
                 color = TellyportColors.TextSecondary,
                 fontSize = 13.sp
             )
@@ -364,6 +503,47 @@ fun DiagnosticsScreen(
                 text = "Reset Default Profiles",
                 icon = Icons.Rounded.Restore,
                 onClick = onResetDefaultProfiles
+            )
+        }
+    }
+}
+
+@Composable
+private fun AdbCommandRow(
+    label: String,
+    command: String,
+    onCopy: () -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(
+            text = label,
+            color = TellyportColors.TextSecondary,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(TellyportColors.Background)
+                    .padding(10.dp)
+            ) {
+                Text(
+                    text = command,
+                    color = TellyportColors.Primary,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 12.sp
+                )
+            }
+            TellyportSecondaryButton(
+                text = "Copy",
+                icon = Icons.Rounded.ContentCopy,
+                onClick = onCopy
             )
         }
     }

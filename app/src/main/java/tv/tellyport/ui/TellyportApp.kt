@@ -43,12 +43,16 @@ fun TellyportApp(
                     onBack = viewModel::navigateToDashboard,
                     onRefresh = viewModel::refreshDiagnostics,
                     onOpenDeveloperOptions = { viewModel.openDeveloperOptions() },
-                    onCopyAdbCommand = viewModel::copyAdbCommandToClipboard,
+                    onOpenAccessibilitySettings = { viewModel.openAccessibilitySettings() },
+                    onCopyCommand = viewModel::copyCommandToClipboard,
                     onRequestLocationPermission = onRequestLocationPermission,
                     onRequestNotificationPermission = onRequestNotificationPermission,
+                    onRequestShizukuPermission = viewModel::requestShizukuPermission,
+                    onOpenShizuku = viewModel::openShizukuApp,
                     onOpenTailscale = viewModel::openTailscaleApp,
                     onOpenWgTunnel = viewModel::openWgTunnelApp,
                     onSaveWgRemoteControlKey = viewModel::saveWgRemoteControlKey,
+                    onUpdateAutoDisconnect = viewModel::setAutoDisconnectSettings,
                     onTestTailscaleConnect = viewModel::triggerTailscaleConnect,
                     onTestTailscaleDisconnect = viewModel::triggerTailscaleDisconnect,
                     onResetDefaultProfiles = viewModel::resetDefaultProfiles
@@ -58,6 +62,8 @@ fun TellyportApp(
             is TellyportDestination.ProfileEditor -> {
                 ProfileEditorScreen(
                     existingProfile = destination.editingProfile,
+                    allProfiles = state.profiles,
+                    installedApps = state.installedApps,
                     currentWgRemoteControlKey = state.wgRemoteControlKey,
                     onSave = viewModel::saveProfile,
                     onCancel = viewModel::navigateToDashboard

@@ -1,27 +1,29 @@
 package tv.tellyport.vpn
 
 import android.content.Context
-import android.content.pm.PackageManager
 import android.net.ConnectivityManager
+import android.net.LinkProperties
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
-import android.os.Build
-import android.os.Process
-import tv.tellyport.data.VpnBackend
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import java.net.Inet4Address
 
 /**
  * Live state of Android's [NetworkCapabilities.TRANSPORT_VPN] tunnel transport.
+ *
+ * Uses [LinkProperties]-based [inferredBackend] instead of `NetworkCapabilities.getOwnerUid()`,
+ * which Android 14 redacts (`Process.INVALID_UID`) for external VPN apps.
  */
 data class VpnConnectionState(
     val isConnected: Boolean = false,
     val hasInternetCapability: Boolean = false,
     val interfaceName: String? = null,
     val networkHandle: Long? = null,
-    val ownerBackend: VpnBackend? = null
+    val inferredBackend: InferredVpnBackend = InferredVpnBackend.NONE,
+    val ipv4Addresses: List<String> = emptyList()
 )
 
 /**
@@ -29,7 +31,8 @@ data class VpnConnectionState(
  * ([NetworkCapabilities.TRANSPORT_VPN]) and exposes live state as a [StateFlow].
  */
 class VpnNetworkMonitor(
-    context: Context
+    context: Context,
+    private val onVpnLostCallback: (() -> Unit)? = null
 ) {
     private val appContext = context.applicationContext
     private val connectivityManager =
@@ -48,6 +51,13 @@ class VpnNetworkMonitor(
         override fun onCapabilitiesChanged(
             network: Network,
             networkCapabilities: NetworkCapabilities
+        ) {
+            refreshState()
+        }
+
+        override fun onLinkPropertiesChanged(
+            network: Network,
+            linkProperties: LinkProperties
         ) {
             refreshState()
         }
@@ -93,12 +103,17 @@ class VpnNetworkMonitor(
     }
 
     /**
-     * Synchronously inspects active networks for [NetworkCapabilities.TRANSPORT_VPN].
+     * Synchronously inspects active networks for [NetworkCapabilities.TRANSPORT_VPN]
+     * and inspects [LinkProperties] to infer Tailscale (`100.64.0.0/10` / `100.100.100.100`)
+     * vs an unattributed external VPN.
      */
-    fun refreshState() {
+    fun refreshState(): VpnConnectionState {
+        val previous = _state.value
         val cm = connectivityManager ?: run {
-            _state.value = VpnConnectionState()
-            return
+            val disconnected = VpnConnectionState()
+            _state.value = disconnected
+            if (previous.isConnected) onVpnLostCallback?.invoke()
+            return disconnected
         }
 
         @Suppress("DEPRECATION")
@@ -113,38 +128,31 @@ class VpnNetworkMonitor(
             caps?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true
         }
 
-        if (vpnNetwork != null) {
+        val next = if (vpnNetwork != null) {
             val caps = cm.getNetworkCapabilities(vpnNetwork)
             val linkProps = cm.getLinkProperties(vpnNetwork)
-            _state.value = VpnConnectionState(
+            val ipv4List = linkProps?.linkAddresses
+                ?.mapNotNull { (it.address as? Inet4Address)?.hostAddress }
+                .orEmpty()
+            VpnConnectionState(
                 isConnected = true,
                 hasInternetCapability = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true,
                 interfaceName = linkProps?.interfaceName,
                 networkHandle = vpnNetwork.networkHandle,
-                ownerBackend = resolveOwnerBackend(caps)
+                inferredBackend = VpnBackendHeuristic.inferFromLinkProperties(linkProps),
+                ipv4Addresses = ipv4List
             )
         } else {
-            _state.value = VpnConnectionState(isConnected = false)
+            VpnConnectionState(
+                isConnected = false,
+                inferredBackend = InferredVpnBackend.NONE
+            )
         }
-    }
 
-    private fun resolveOwnerBackend(caps: NetworkCapabilities?): VpnBackend? {
-        if (caps == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
-        val ownerUid = caps.ownerUid
-        if (ownerUid == Process.INVALID_UID) return null
-
-        return when (ownerUid) {
-            getPackageUid(VpnController.TAILSCALE_PACKAGE) -> VpnBackend.TAILSCALE
-            getPackageUid(VpnController.WG_TUNNEL_PACKAGE) -> VpnBackend.WG_TUNNEL
-            else -> null
+        _state.value = next
+        if (previous.isConnected && !next.isConnected) {
+            onVpnLostCallback?.invoke()
         }
-    }
-
-    private fun getPackageUid(packageName: String): Int? {
-        return try {
-            appContext.packageManager.getApplicationInfo(packageName, 0).uid
-        } catch (_: PackageManager.NameNotFoundException) {
-            null
-        }
+        return next
     }
 }

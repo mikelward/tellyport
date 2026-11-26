@@ -58,6 +58,7 @@ import tv.tellyport.ui.components.TellyportPrimaryButton
 import tv.tellyport.ui.components.TellyportSecondaryButton
 import tv.tellyport.ui.theme.TellyportColors
 import tv.tellyport.vpn.ActivationProgress
+import tv.tellyport.vpn.InferredVpnBackend
 import java.util.Locale
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -76,7 +77,13 @@ fun DashboardScreen(
     onRequestLocationPermission: () -> Unit,
     onDismissBanner: () -> Unit
 ) {
-    val isAnyActive = state.mockLocationStatus.isActive || state.vpnState.isConnected
+    val isAnyActive = state.mockLocationStatus.isActive ||
+        state.vpnState.isConnected ||
+        state.activeSession != null
+
+    val activeProfileName = state.activeSession?.let { session ->
+        state.profiles.firstOrNull { it.id == session.profileId }?.name
+    } ?: state.mockLocationStatus.activeProfileName
 
     LazyVerticalGrid(
         columns = GridCells.Adaptive(minSize = 310.dp),
@@ -121,7 +128,7 @@ fun DashboardScreen(
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = "Regional VPN • Mock Location • Streaming Launcher",
+                                text = "Watch TV anywhere • Zero-Touch Regional Automation",
                                 color = TellyportColors.TextSecondary,
                                 fontSize = 13.sp
                             )
@@ -132,13 +139,16 @@ fun DashboardScreen(
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
+                        if (!activeProfileName.isNullOrBlank()) {
+                            StatusPill(
+                                label = "Active: $activeProfileName",
+                                active = true,
+                                activeColor = TellyportColors.Secondary,
+                                activeContainer = Color(0xFF1F2347)
+                            )
+                        }
                         StatusPill(
-                            label = if (state.vpnState.isConnected) {
-                                val iface = state.vpnState.interfaceName?.let { " ($it)" } ?: ""
-                                "VPN Connected$iface"
-                            } else {
-                                "VPN Disconnected"
-                            },
+                            label = formatVpnPillLabel(state),
                             active = state.vpnState.isConnected,
                             activeColor = TellyportColors.Success,
                             activeContainer = TellyportColors.SuccessContainer
@@ -160,6 +170,16 @@ fun DashboardScreen(
                             activeColor = TellyportColors.Primary,
                             activeContainer = TellyportColors.InfoContainer
                         )
+                        StatusPill(
+                            label = if (state.permissionStatus.isAccessibilityEnabled) {
+                                "Auto-Intercept Ready"
+                            } else {
+                                "Auto-Intercept Off"
+                            },
+                            active = state.permissionStatus.isAccessibilityEnabled,
+                            activeColor = TellyportColors.Success,
+                            activeContainer = TellyportColors.SuccessContainer
+                        )
                     }
                 }
 
@@ -180,12 +200,12 @@ fun DashboardScreen(
                         onClick = onOpenDiagnostics
                     )
                     TellyportSecondaryButton(
-                        text = "Open Tailscale",
+                        text = "Open Tailscale App",
                         icon = Icons.Rounded.VpnKey,
                         onClick = onOpenTailscale
                     )
                     TellyportPrimaryButton(
-                        text = "Disconnect All",
+                        text = "Stop All",
                         icon = Icons.Rounded.PowerSettingsNew,
                         onClick = onDisconnectAll,
                         containerColor = if (isAnyActive) TellyportColors.Danger else TellyportColors.SurfaceElevated,
@@ -208,7 +228,11 @@ fun DashboardScreen(
         }
 
         // Activation Progress / Status Notification Banner
-        val feedbackBanner = resolveFeedbackBanner(state.activationProgress, state.bannerMessage, state.mockLocationStatus.errorMessage)
+        val feedbackBanner = resolveFeedbackBanner(
+            state.activationProgress,
+            state.bannerMessage,
+            state.mockLocationStatus.errorMessage
+        )
         if (feedbackBanner != null) {
             item(span = { GridItemSpan(maxLineSpan) }) {
                 Row(
@@ -240,13 +264,26 @@ fun DashboardScreen(
 
         // Section Label
         item(span = { GridItemSpan(maxLineSpan) }) {
-            Text(
-                text = "REGIONAL PROFILES (${state.profiles.size})",
-                color = TellyportColors.TextMuted,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 1.2.sp
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "REGIONAL PROFILES (${state.profiles.size})",
+                    color = TellyportColors.TextMuted,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.2.sp
+                )
+                if (state.autoDisconnectSettings.enabled) {
+                    Text(
+                        text = "Home Auto-Disconnect: ${state.autoDisconnectSettings.gracePeriodSeconds}s",
+                        color = TellyportColors.TextSecondary,
+                        fontSize = 12.sp
+                    )
+                }
+            }
         }
 
         // Empty State
@@ -268,7 +305,7 @@ fun DashboardScreen(
                         fontWeight = FontWeight.SemiBold
                     )
                     Text(
-                        text = "Create a profile to pair a VPN backend, spoofed coordinates, and a streaming app.",
+                        text = "Create a profile to pair a VPN backend, spoofed coordinates, and mapped streaming apps.",
                         color = TellyportColors.TextSecondary,
                         fontSize = 14.sp
                     )
@@ -280,10 +317,10 @@ fun DashboardScreen(
                 }
             }
         } else {
-            // Focusable Profile Cards Grid
             items(state.profiles, key = { it.id }) { profile ->
-                val isProfileActive = state.mockLocationStatus.isActive &&
-                    state.mockLocationStatus.activeProfileId == profile.id
+                val isProfileActive =
+                    (state.mockLocationStatus.isActive && state.mockLocationStatus.activeProfileId == profile.id) ||
+                        (state.vpnState.isConnected && state.activeSession?.profileId == profile.id)
                 val isProfileLoading = state.activationProgress is ActivationProgress.InProgress &&
                     state.activationProgress.profileId == profile.id
 
@@ -299,6 +336,17 @@ fun DashboardScreen(
             }
         }
     }
+}
+
+private fun formatVpnPillLabel(state: TellyportUiState): String {
+    if (!state.vpnState.isConnected) return "VPN Disconnected"
+    val backendLabel = when {
+        state.vpnState.inferredBackend == InferredVpnBackend.TAILSCALE -> "Tailscale (100.64.x)"
+        state.activeSession != null -> state.activeSession.vpnBackend.displayName
+        else -> state.vpnState.inferredBackend.displayName
+    }
+    val iface = state.vpnState.interfaceName?.let { " • $it" } ?: ""
+    return "VPN: $backendLabel$iface"
 }
 
 private data class FeedbackBanner(
@@ -439,21 +487,23 @@ private fun RegionalProfileCard(
                 )
             }
 
-            // VPN Backend Badge & Target App Badge
+            // VPN Backend Badge & Mapped Streaming Apps
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 val vpnLabel = buildString {
                     append(profile.vpnBackend.displayName)
-                    if (!profile.vpnTunnelOrNodeName.isNullOrBlank()) {
+                    if (!profile.tunnelName.isNullOrBlank()) {
                         append(" • ")
-                        append(profile.vpnTunnelOrNodeName)
+                        append(profile.tunnelName)
                     }
                 }
                 val (vpnBg, vpnFg) = when (profile.vpnBackend) {
+                    VpnBackend.UNCONFIGURED -> TellyportColors.WarningContainer to TellyportColors.Warning
                     VpnBackend.TAILSCALE -> Color(0xFF1A2347) to Color(0xFF93C5FD)
                     VpnBackend.WG_TUNNEL -> Color(0xFF2B1C3D) to Color(0xFFD8B4FE)
+                    VpnBackend.SOCKS_WRAPPER -> Color(0xFF1B2E3C) to Color(0xFF67E8F9)
                     VpnBackend.NONE -> TellyportColors.SurfaceElevated to TellyportColors.TextSecondary
                 }
                 InfoBadge(
@@ -462,26 +512,34 @@ private fun RegionalProfileCard(
                     contentColor = vpnFg
                 )
 
-                val friendlyApp = ProfilePresets.friendlyAppName(profile.targetAppPackage)
-                if (friendlyApp != null) {
-                    val suffix = if (profile.autoLaunchApp) " (Auto)" else " (Manual)"
+                if (profile.mappedPackages.isEmpty()) {
                     InfoBadge(
-                        text = "$friendlyApp$suffix",
-                        containerColor = Color(0xFF122C2A),
-                        contentColor = Color(0xFF5EEAD4)
-                    )
-                } else {
-                    InfoBadge(
-                        text = "No Target App",
+                        text = "No Mapped Apps",
                         containerColor = TellyportColors.SurfaceElevated,
                         contentColor = TellyportColors.TextMuted
                     )
+                } else {
+                    profile.mappedPackages.take(3).forEach { pkg ->
+                        val friendly = ProfilePresets.friendlyAppName(pkg) ?: pkg
+                        InfoBadge(
+                            text = friendly,
+                            containerColor = Color(0xFF122C2A),
+                            contentColor = Color(0xFF5EEAD4)
+                        )
+                    }
+                    if (profile.mappedPackages.size > 3) {
+                        InfoBadge(
+                            text = "+${profile.mappedPackages.size - 3} more",
+                            containerColor = TellyportColors.SurfaceElevated,
+                            contentColor = TellyportColors.TextSecondary
+                        )
+                    }
                 }
             }
 
-            if (!profile.targetAppPackage.isNullOrBlank()) {
+            if (profile.mappedPackages.isNotEmpty()) {
                 Text(
-                    text = profile.targetAppPackage,
+                    text = profile.mappedPackages.joinToString(", "),
                     color = TellyportColors.TextMuted,
                     fontFamily = FontFamily.Monospace,
                     fontSize = 11.sp,
@@ -509,9 +567,21 @@ private fun RegionalProfileCard(
                     )
                 } else {
                     TellyportPrimaryButton(
-                        text = if (isLoading) "Activating..." else "Activate",
-                        icon = Icons.Rounded.PlayArrow,
-                        onClick = onActivate,
+                        text = when {
+                            isLoading -> "Activating..."
+                            profile.vpnBackend == VpnBackend.UNCONFIGURED -> "Configure"
+                            else -> "Activate"
+                        },
+                        icon = if (profile.vpnBackend == VpnBackend.UNCONFIGURED) {
+                            Icons.Rounded.Edit
+                        } else {
+                            Icons.Rounded.PlayArrow
+                        },
+                        onClick = if (profile.vpnBackend == VpnBackend.UNCONFIGURED) {
+                            onEdit
+                        } else {
+                            onActivate
+                        },
                         enabled = !isLoading,
                         modifier = Modifier.weight(1f)
                     )

@@ -7,20 +7,7 @@ import android.content.Intent
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import tv.tellyport.TellyportApplication
-import tv.tellyport.data.ProfileRepository
-import tv.tellyport.data.RegionalProfile
-import tv.tellyport.data.VpnBackend
-import tv.tellyport.location.MockLocationPermissionChecker
-import tv.tellyport.location.MockLocationPermissionStatus
-import tv.tellyport.location.MockLocationState
-import tv.tellyport.location.MockLocationStatus
-import tv.tellyport.service.MockLocationService
-import tv.tellyport.vpn.ActivationProgress
-import tv.tellyport.vpn.ProfileActivationCoordinator
-import tv.tellyport.vpn.VpnConnectionState
-import tv.tellyport.vpn.VpnController
-import tv.tellyport.vpn.VpnNetworkMonitor
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -29,6 +16,32 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import tv.tellyport.TellyportApplication
+import tv.tellyport.accessibility.AccessibilityServiceState
+import tv.tellyport.data.ActiveVpnSession
+import tv.tellyport.data.AutoDisconnectSettings
+import tv.tellyport.data.BootRecoveryDiagnostics
+import tv.tellyport.data.ProfileRepository
+import tv.tellyport.data.RegionalProfile
+import tv.tellyport.data.SingleTailscaleConstraintException
+import tv.tellyport.data.VpnBackend
+import tv.tellyport.location.MockLocationPermissionChecker
+import tv.tellyport.location.MockLocationPermissionStatus
+import tv.tellyport.location.MockLocationState
+import tv.tellyport.location.MockLocationStatus
+import tv.tellyport.shizuku.ShizukuForceStopper
+import tv.tellyport.shizuku.ShizukuStatus
+import tv.tellyport.vpn.ActivationProgress
+import tv.tellyport.vpn.ProfileActivationCoordinator
+import tv.tellyport.vpn.VpnConnectionState
+import tv.tellyport.vpn.VpnController
+import tv.tellyport.vpn.VpnNetworkMonitor
+
+data class InstalledTvApp(
+    val label: String,
+    val packageName: String
+)
 
 sealed class TellyportDestination {
     data object Dashboard : TellyportDestination()
@@ -39,6 +52,9 @@ sealed class TellyportDestination {
 data class TellyportUiState(
     val profiles: List<RegionalProfile> = emptyList(),
     val wgRemoteControlKey: String = "",
+    val activeSession: ActiveVpnSession? = null,
+    val autoDisconnectSettings: AutoDisconnectSettings = AutoDisconnectSettings(),
+    val bootRecoveryDiagnostics: BootRecoveryDiagnostics? = null,
     val mockLocationStatus: MockLocationStatus = MockLocationStatus(),
     val vpnState: VpnConnectionState = VpnConnectionState(),
     val permissionStatus: MockLocationPermissionStatus = MockLocationPermissionStatus(
@@ -47,6 +63,12 @@ data class TellyportUiState(
         hasNotificationPermission = true,
         adbCommand = MockLocationPermissionChecker.buildAdbMockLocationCommand("tv.tellyport")
     ),
+    val shizukuStatus: ShizukuStatus = ShizukuStatus(
+        isInstalled = false,
+        isBinderAlive = false,
+        isPermissionGranted = false
+    ),
+    val installedApps: List<InstalledTvApp> = emptyList(),
     val activationProgress: ActivationProgress = ActivationProgress.Idle,
     val destination: TellyportDestination = TellyportDestination.Dashboard,
     val bannerMessage: String? = null
@@ -58,51 +80,43 @@ class TellyportViewModel(
     private val vpnController: VpnController,
     private val vpnNetworkMonitor: VpnNetworkMonitor,
     private val permissionChecker: MockLocationPermissionChecker,
-    private val startMockLocation: (RegionalProfile, Long) -> Unit = { profile, sessionId ->
-        MockLocationService.start(appContext, profile, sessionId)
-    },
-    private val stopMockLocation: () -> Unit = {
-        MockLocationService.stop(appContext)
-    },
+    private val shizukuForceStopper: ShizukuForceStopper,
+    private val coordinator: ProfileActivationCoordinator,
     private val vpnStateFlow: StateFlow<VpnConnectionState> = vpnNetworkMonitor.state,
     private val mockLocationStatusFlow: StateFlow<MockLocationStatus> = MockLocationState.status,
     private val permissionStatusProvider: () -> MockLocationPermissionStatus = {
         permissionChecker.checkStatus()
     },
-    private val vpnWaitTimeoutMs: Long = ProfileActivationCoordinator.DEFAULT_VPN_WAIT_TIMEOUT_MS,
-    private val mockLocationWaitTimeoutMs: Long = ProfileActivationCoordinator.DEFAULT_MOCK_LOCATION_WAIT_TIMEOUT_MS
+    private val shizukuStatusProvider: () -> ShizukuStatus = {
+        shizukuForceStopper.checkStatus()
+    },
+    private val loadInstalledApps: suspend () -> List<InstalledTvApp> = {
+        queryInstalledLaunchableApps(appContext)
+    }
 ) : ViewModel() {
 
-    private val wgRemoteControlKeyFlow: StateFlow<String> = profileRepository.wgRemoteControlKey
-        .stateIn(viewModelScope, SharingStarted.Eagerly, "")
-
-    private val coordinator = ProfileActivationCoordinator(
-        vpnController = vpnController,
-        vpnStateFlow = vpnStateFlow,
-        mockLocationStatusFlow = mockLocationStatusFlow,
-        startMockLocation = startMockLocation,
-        stopMockLocation = stopMockLocation,
-        wgRemoteControlKeyProvider = { wgRemoteControlKeyFlow.value },
-        vpnWaitTimeoutMs = vpnWaitTimeoutMs,
-        mockLocationWaitTimeoutMs = mockLocationWaitTimeoutMs
-    )
-
     private val _permissionStatus = MutableStateFlow(permissionStatusProvider())
+    private val _shizukuStatus = MutableStateFlow(shizukuStatusProvider())
+    private val _installedApps = MutableStateFlow<List<InstalledTvApp>>(emptyList())
     private val _destination = MutableStateFlow<TellyportDestination>(TellyportDestination.Dashboard)
     private val _bannerMessage = MutableStateFlow<String?>(null)
 
     private var activationJob: Job? = null
     private var activatingProfileId: String? = null
 
-    private val coreFlows = combine(
-        profileRepository.profiles,
+    private val runtimeFlows = combine(
+        profileRepository.store,
         mockLocationStatusFlow,
         vpnStateFlow,
         _permissionStatus,
         coordinator.progress
-    ) { profiles, mockStatus, vpnState, perms, progress ->
+    ) { store, mockStatus, vpnState, perms, progress ->
         TellyportUiState(
-            profiles = profiles,
+            profiles = store.profiles,
+            wgRemoteControlKey = store.wgRemoteControlKey,
+            activeSession = store.activeSession,
+            autoDisconnectSettings = store.autoDisconnectSettings,
+            bootRecoveryDiagnostics = store.bootRecoveryDiagnostics,
             mockLocationStatus = mockStatus,
             vpnState = vpnState,
             permissionStatus = perms,
@@ -111,20 +125,31 @@ class TellyportViewModel(
     }
 
     val uiState: StateFlow<TellyportUiState> = combine(
-        coreFlows,
-        wgRemoteControlKeyFlow,
-        _destination,
-        _bannerMessage
-    ) { base, wgKey, destination, banner ->
+        runtimeFlows,
+        _shizukuStatus,
+        _installedApps,
+        AccessibilityServiceState.isConnected,
+        combine(_destination, _bannerMessage) { dest, banner -> dest to banner }
+    ) { base, shizuku, apps, accessibilityBound, navAndBanner ->
+        val updatedPerms = if (accessibilityBound && !base.permissionStatus.isAccessibilityEnabled) {
+            base.permissionStatus.copy(isAccessibilityEnabled = true)
+        } else {
+            base.permissionStatus
+        }
         base.copy(
-            wgRemoteControlKey = wgKey,
-            destination = destination,
-            bannerMessage = banner
+            permissionStatus = updatedPerms,
+            shizukuStatus = shizuku,
+            installedApps = apps,
+            destination = navAndBanner.first,
+            bannerMessage = navAndBanner.second
         )
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000L),
-        initialValue = TellyportUiState(permissionStatus = _permissionStatus.value)
+        initialValue = TellyportUiState(
+            permissionStatus = _permissionStatus.value,
+            shizukuStatus = _shizukuStatus.value
+        )
     )
 
     init {
@@ -136,6 +161,7 @@ class TellyportViewModel(
 
     fun refreshDiagnostics() {
         _permissionStatus.value = permissionStatusProvider()
+        _shizukuStatus.value = shizukuStatusProvider()
         vpnNetworkMonitor.refreshState()
     }
 
@@ -145,10 +171,12 @@ class TellyportViewModel(
     }
 
     fun openCreateProfile() {
+        refreshInstalledAppsAsync()
         _destination.value = TellyportDestination.ProfileEditor(editingProfile = null)
     }
 
     fun openEditProfile(profile: RegionalProfile) {
+        refreshInstalledAppsAsync()
         _destination.value = TellyportDestination.ProfileEditor(editingProfile = profile)
     }
 
@@ -163,6 +191,10 @@ class TellyportViewModel(
 
     fun activateProfile(profile: RegionalProfile) {
         refreshDiagnostics()
+        if (profile.vpnBackend == VpnBackend.UNCONFIGURED) {
+            _bannerMessage.value = "Assign a VPN backend to \"${profile.name}\" in Edit before activating."
+            return
+        }
         val perms = _permissionStatus.value
         if (!perms.hasFineLocationPermission) {
             _bannerMessage.value = "Grant Location permission first so Tellyport can run its foreground mock location service."
@@ -201,12 +233,16 @@ class TellyportViewModel(
 
     fun saveProfile(profile: RegionalProfile, updatedWgRemoteControlKey: String? = null) {
         viewModelScope.launch {
-            if (updatedWgRemoteControlKey != null) {
-                profileRepository.setWgRemoteControlKey(updatedWgRemoteControlKey)
+            try {
+                if (updatedWgRemoteControlKey != null) {
+                    profileRepository.setWgRemoteControlKey(updatedWgRemoteControlKey)
+                }
+                profileRepository.upsertProfile(profile)
+                _destination.value = TellyportDestination.Dashboard
+                _bannerMessage.value = "Saved profile \"${profile.name}\"."
+            } catch (ex: SingleTailscaleConstraintException) {
+                _bannerMessage.value = ProfileRepository.SINGLE_TAILSCALE_MESSAGE
             }
-            profileRepository.upsertProfile(profile)
-            _destination.value = TellyportDestination.Dashboard
-            _bannerMessage.value = "Saved profile \"${profile.name}\"."
         }
     }
 
@@ -221,10 +257,17 @@ class TellyportViewModel(
         }
     }
 
+    fun setAutoDisconnectSettings(enabled: Boolean, gracePeriodSeconds: Int) {
+        viewModelScope.launch {
+            profileRepository.setAutoDisconnectSettings(enabled, gracePeriodSeconds)
+        }
+    }
+
     fun deleteProfile(profile: RegionalProfile) {
         val isDeletingPendingActivation = activatingProfileId == profile.id ||
             (coordinator.progress.value as? ActivationProgress.InProgress)?.profileId == profile.id
-        val isDeletingActiveProfile = mockLocationStatusFlow.value.activeProfileId == profile.id
+        val isDeletingActiveProfile = mockLocationStatusFlow.value.activeProfileId == profile.id ||
+            uiState.value.activeSession?.profileId == profile.id
         val pendingJob = if (isDeletingPendingActivation || isDeletingActiveProfile) {
             activationJob.also {
                 activationJob = null
@@ -249,7 +292,7 @@ class TellyportViewModel(
     fun resetDefaultProfiles() {
         viewModelScope.launch {
             profileRepository.resetDefaults()
-            _bannerMessage.value = "Restored default US, UK, and AU profiles."
+            _bannerMessage.value = "Restored default New York, London, and Sydney profiles."
         }
     }
 
@@ -269,6 +312,25 @@ class TellyportViewModel(
         } else {
             "WG Tunnel (${VpnController.WG_TUNNEL_PACKAGE}) is not installed on this device."
         }
+    }
+
+    fun openShizukuApp() {
+        val opened = vpnController.openShizukuApp()
+        _bannerMessage.value = if (opened) {
+            "Opened Shizuku. Start the Shizuku service via Wireless Debugging."
+        } else {
+            "Shizuku (${VpnController.SHIZUKU_PACKAGE}) is not installed on this device."
+        }
+    }
+
+    fun requestShizukuPermission() {
+        val requested = shizukuForceStopper.requestPermission()
+        _bannerMessage.value = if (requested) {
+            "Requested Shizuku authorization."
+        } else {
+            "Shizuku binder is offline. Start Shizuku first via Wireless Debugging."
+        }
+        refreshDiagnostics()
     }
 
     fun triggerTailscaleConnect() {
@@ -300,16 +362,32 @@ class TellyportViewModel(
         }
     }
 
-    fun copyAdbCommandToClipboard() {
-        val command = permissionChecker.getAdbMockLocationCommand()
-        val clipboard = appContext.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-        clipboard?.setPrimaryClip(ClipData.newPlainText("Tellyport ADB Mock Location", command))
-        _bannerMessage.value = "Copied ADB command to clipboard."
+    fun openAccessibilitySettings(): Boolean {
+        return try {
+            val intent: Intent = permissionChecker.buildAccessibilitySettingsIntent()
+            appContext.startActivity(intent)
+            true
+        } catch (_: Exception) {
+            _bannerMessage.value = "Unable to open Accessibility Settings directly on this device."
+            false
+        }
     }
 
-    override fun onCleared() {
-        vpnNetworkMonitor.stop()
-        super.onCleared()
+    fun copyCommandToClipboard(label: String, command: String) {
+        val clipboard = appContext.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+        clipboard?.setPrimaryClip(ClipData.newPlainText(label, command))
+        _bannerMessage.value = "Copied $label command to clipboard."
+    }
+
+    fun copyAdbCommandToClipboard() {
+        copyCommandToClipboard("Mock Location ADB", permissionChecker.getAdbMockLocationCommand())
+    }
+
+    private fun refreshInstalledAppsAsync() {
+        viewModelScope.launch {
+            val apps = withContext(Dispatchers.IO) { loadInstalledApps() }
+            _installedApps.value = apps
+        }
     }
 
     class Factory(private val app: TellyportApplication) : ViewModelProvider.Factory {
@@ -320,8 +398,39 @@ class TellyportViewModel(
                 profileRepository = app.profileRepository,
                 vpnController = app.vpnController,
                 vpnNetworkMonitor = app.vpnNetworkMonitor,
-                permissionChecker = app.permissionChecker
+                permissionChecker = app.permissionChecker,
+                shizukuForceStopper = app.shizukuForceStopper,
+                coordinator = app.activationCoordinator
             ) as T
+        }
+    }
+
+    companion object {
+        private fun queryInstalledLaunchableApps(context: Context): List<InstalledTvApp> {
+            val pm = context.packageManager
+            val discovered = linkedMapOf<String, InstalledTvApp>()
+
+            val queries = listOf(
+                Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LEANBACK_LAUNCHER),
+                Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+            )
+            for (intent in queries) {
+                @Suppress("DEPRECATION")
+                val resolved = try {
+                    pm.queryIntentActivities(intent, 0)
+                } catch (_: Exception) {
+                    emptyList()
+                }
+                for (info in resolved) {
+                    val pkg = info.activityInfo?.packageName ?: continue
+                    if (pkg == context.packageName) continue
+                    if (pkg !in discovered) {
+                        val label = info.loadLabel(pm)?.toString()?.trim().orEmpty().ifEmpty { pkg }
+                        discovered[pkg] = InstalledTvApp(label = label, packageName = pkg)
+                    }
+                }
+            }
+            return discovered.values.sortedBy { it.label.lowercase() }
         }
     }
 }
