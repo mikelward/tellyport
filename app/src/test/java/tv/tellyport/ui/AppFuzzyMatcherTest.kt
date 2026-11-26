@@ -131,4 +131,21 @@ class AppFuzzyMatcherTest {
         val unmapped = AppFuzzyMatcher.filterAndRank(entries, "", AppFilterMode.UNMAPPED)
         assertEquals(listOf("Netflix", "YouTube"), unmapped.map { it.label })
     }
+
+    @Test
+    fun filterAndRank_handlesExpandingUppercaseUnicodeWithoutIndexOutOfBounds() {
+        val entries = listOf(
+            ConfigurableAppEntry("İzle", "tr.tv.izle", true, null),
+            ConfigurableAppEntry("İstanbul TV", "tr.tv.istanbul", true, null)
+        )
+
+        val matchedE = AppFuzzyMatcher.filterAndRank(entries, "e")
+        assertEquals(listOf("İzle"), matchedE.map { it.label })
+
+        val matchedSubseq = AppFuzzyMatcher.filterAndRank(entries, "zl")
+        assertEquals(listOf("İzle"), matchedSubseq.map { it.label })
+
+        val matchedIstanbul = AppFuzzyMatcher.filterAndRank(entries, "tb")
+        assertEquals(listOf("İstanbul TV"), matchedIstanbul.map { it.label })
+    }
 }
