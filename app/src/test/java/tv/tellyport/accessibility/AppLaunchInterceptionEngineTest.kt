@@ -154,6 +154,7 @@ class AppLaunchInterceptionEngineTest {
             stabilizationDelayMs = 500L
         )
 
+        val toasts = mutableListOf<String>()
         val engine = AppLaunchInterceptionEngine(
             scope = this,
             profilesProvider = { listOf(nyProfile) },
@@ -165,6 +166,7 @@ class AppLaunchInterceptionEngineTest {
                 homePressCount++
                 true
             },
+            showToast = { toasts.add(it) },
             clockElapsedMs = { fakeClockMs },
             relaunchDebounceMs = 4_000L
         )
@@ -174,7 +176,8 @@ class AppLaunchInterceptionEngineTest {
         }
         runCurrent()
 
-        // Home pressed & force-stop executed immediately before VPN finishes connecting.
+        // Toast shown, Home pressed & force-stop executed immediately before VPN finishes connecting.
+        assertEquals(listOf("Connecting to New York..."), toasts)
         assertEquals(1, homePressCount)
         assertEquals(listOf("com.cbs.ott"), forceStopper.stoppedPackages)
 
@@ -206,11 +209,23 @@ class AppLaunchInterceptionEngineTest {
             engine.handleEvent(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED, "com.cbs.ott")
         )
 
-        // After debounce expires, launching com.cbs.ott again sees AlreadySatisfied and passes through!
+        // Intra-app window transition after debounce sees AlreadySatisfied without spamming a toast.
         fakeClockMs += 5_000L
         assertEquals(
             InterceptionOutcome.AlreadySatisfied,
             engine.handleEvent(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED, "com.cbs.ott")
+        )
+        assertEquals(listOf("Connecting to New York..."), toasts)
+
+        // Returning to Home Launcher and reopening com.cbs.ott shows "Already connected to New York".
+        engine.handleEvent(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED, "com.google.android.apps.tv.launcherx")
+        assertEquals(
+            InterceptionOutcome.AlreadySatisfied,
+            engine.handleEvent(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED, "com.cbs.ott")
+        )
+        assertEquals(
+            listOf("Connecting to New York...", "Already connected to New York"),
+            toasts
         )
         assertEquals(1, forceStopper.stoppedPackages.size)
     }

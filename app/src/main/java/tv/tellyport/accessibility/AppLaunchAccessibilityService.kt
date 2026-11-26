@@ -5,8 +5,11 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.view.accessibility.AccessibilityEvent
+import android.widget.Toast
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -65,6 +68,7 @@ object AccessibilityServiceState {
  */
 class AppLaunchAccessibilityService : AccessibilityService() {
 
+    private val mainHandler = Handler(Looper.getMainLooper())
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var engine: AppLaunchInterceptionEngine? = null
 
@@ -87,6 +91,11 @@ class AppLaunchAccessibilityService : AccessibilityService() {
             coordinator = app.activationCoordinator,
             forceStopper = app.shizukuForceStopper,
             performGlobalHomeAction = { performGlobalAction(GLOBAL_ACTION_HOME) },
+            showToast = { message ->
+                mainHandler.post {
+                    Toast.makeText(applicationContext, message, Toast.LENGTH_SHORT).show()
+                }
+            },
             additionalLauncherPackages = setOfNotNull(resolvedHomePackage)
         )
     }
