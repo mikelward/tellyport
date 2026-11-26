@@ -616,4 +616,63 @@ class VpnControllerTest {
         assertEquals(600L, persistedSession?.networkHandle)
         assertEquals(listOf("au.com.stan.and"), dispatcher.startedActivities.map { it.`package` })
     }
+
+    @Test
+    fun whenVpnReplacedByDifferentNetworkDuringStabilization_rejectsAndSkipsLaunch() = runTest {
+        val dispatcher = RecordingIntentDispatcher()
+        val controller = VpnController(dispatcher)
+        val vpnState = MutableStateFlow(VpnConnectionState(isConnected = false))
+        val mockStatus = MutableStateFlow(MockLocationStatus())
+        var persistedSession: ActiveVpnSession? = null
+
+        val coordinator = ProfileActivationCoordinator(
+            vpnController = controller,
+            vpnStateFlow = vpnState,
+            mockLocationStatusFlow = mockStatus,
+            startMockLocation = autoInjectingMockStarter(mockStatus),
+            stopMockLocation = {},
+            wgRemoteControlKeyProvider = { "wg-secret" },
+            persistedSessionProvider = { persistedSession },
+            persistActiveSession = { persistedSession = it },
+            stabilizationDelayMs = 500L
+        )
+
+        val sydneyWg = RegionalProfile(
+            id = "preset-sydney",
+            name = "Sydney",
+            regionCode = "AU",
+            latitude = -33.8688,
+            longitude = 151.2093,
+            vpnBackend = VpnBackend.WG_TUNNEL,
+            tunnelName = "unifi-au-syd",
+            mappedPackages = listOf("au.com.stan.and"),
+            autoLaunchApp = true
+        )
+
+        val deferred = async { coordinator.activate(sydneyWg) }
+        runCurrent()
+
+        // Requested WG Tunnel connects on handle 800.
+        vpnState.value = VpnConnectionState(
+            isConnected = true,
+            networkHandle = 800L,
+            inferredBackend = InferredVpnBackend.UNKNOWN_EXTERNAL,
+            ipv4Addresses = listOf("10.20.0.2")
+        )
+        advanceTimeBy(200L)
+
+        // During stabilization, another VPN (Tailscale on handle 900) replaces it!
+        vpnState.value = VpnConnectionState(
+            isConnected = true,
+            networkHandle = 900L,
+            inferredBackend = InferredVpnBackend.TAILSCALE,
+            ipv4Addresses = listOf("100.64.5.5")
+        )
+        advanceTimeBy(400L)
+
+        val result = deferred.await()
+        assertTrue(result is ActivationProgress.Warning)
+        assertNull(persistedSession)
+        assertTrue(dispatcher.startedActivities.isEmpty())
+    }
 }
