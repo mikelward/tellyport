@@ -268,14 +268,32 @@ class AppLaunchInterceptionEngineTest {
         advanceTimeBy(30_000L)
         assertEquals(0, mockStoppedCount)
 
-        // User opens an app at 30s -> timer is cancelled!
-        engine.handleEvent(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED, "com.netflix.ninja")
+        // User opens Tellyport at 30s -> Home auto-disconnect timer MUST be cancelled!
+        assertEquals(
+            InterceptionOutcome.Ignored,
+            engine.handleEvent(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED, "tv.tellyport")
+        )
         advanceTimeBy(60_000L)
         assertEquals(0, mockStoppedCount)
 
-        // Return to launcher again and stay for full 60s -> deactivateAll fires!
+        // Return to launcher, then open Tailscale -> timer is also cancelled!
         engine.handleEvent(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED, "com.google.android.apps.tv.launcherx")
-        advanceTimeBy(61_000L)
+        advanceTimeBy(30_000L)
+        assertEquals(
+            InterceptionOutcome.Ignored,
+            engine.handleEvent(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED, VpnController.TAILSCALE_PACKAGE)
+        )
+        advanceTimeBy(60_000L)
+        assertEquals(0, mockStoppedCount)
+
+        // Return to launcher; a transient SystemUI overlay (e.g. volume bar) does NOT cancel the timer -> fires at 60s!
+        engine.handleEvent(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED, "com.google.android.apps.tv.launcherx")
+        advanceTimeBy(20_000L)
+        assertEquals(
+            InterceptionOutcome.Ignored,
+            engine.handleEvent(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED, "com.android.systemui")
+        )
+        advanceTimeBy(41_000L)
         assertEquals(1, mockStoppedCount)
         assertTrue(dispatcher.broadcasts.any { it.action == VpnController.ACTION_TAILSCALE_DISCONNECT })
     }

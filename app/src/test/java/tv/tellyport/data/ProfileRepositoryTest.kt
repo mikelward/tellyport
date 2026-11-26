@@ -262,4 +262,38 @@ class ProfileRepositoryTest {
         }
         assertTrue("Expected CorruptionException for invalid JSON", threwCorruption)
     }
+
+    @Test
+    fun profileStoreSerializer_migratesLegacyV1TunnelAndTargetAppFields() = runTest {
+        val legacyV1Json = """
+            {
+              "schemaVersion": 1,
+              "initialized": true,
+              "wgRemoteControlKey": "saved-wg-key",
+              "profiles": [
+                {
+                  "id": "preset-au",
+                  "name": "AU",
+                  "regionCode": "AU",
+                  "latitude": -33.8688,
+                  "longitude": 151.2093,
+                  "altitude": 19.0,
+                  "accuracyMeters": 5.0,
+                  "vpnBackend": "WG_TUNNEL",
+                  "vpnTunnelOrNodeName": "unifi-au-syd",
+                  "targetAppPackage": "com.amazon.avod.thirdpartyclient",
+                  "autoLaunchApp": true
+                }
+              ]
+            }
+        """.trimIndent()
+
+        val decoded = ProfileStoreSerializer.readFrom(ByteArrayInputStream(legacyV1Json.toByteArray()))
+        assertEquals("saved-wg-key", decoded.wgRemoteControlKey)
+        assertEquals(1, decoded.profiles.size)
+
+        val migrated = decoded.profiles.single()
+        assertEquals("unifi-au-syd", migrated.tunnelName)
+        assertEquals(listOf("com.amazon.avod.thirdpartyclient"), migrated.mappedPackages)
+    }
 }

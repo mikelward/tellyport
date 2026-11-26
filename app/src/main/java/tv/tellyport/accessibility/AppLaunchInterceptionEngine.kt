@@ -80,8 +80,9 @@ class AppLaunchInterceptionEngine(
         val packageName = rawPackageName?.trim().orEmpty()
         if (packageName.isEmpty()) return InterceptionOutcome.Ignored
 
-        // Ignore Tellyport itself, SystemUI, dialogs, keyboards, and VPN/Shizuku utilities.
-        if (packageName in IGNORED_PACKAGES) {
+        // Ignore transient system overlays (SystemUI, volume/permission dialogs, keyboards)
+        // without cancelling the Home auto-disconnect timer or changing lastForegroundPackage.
+        if (packageName in TRANSIENT_OVERLAY_PACKAGES) {
             return InterceptionOutcome.Ignored
         }
 
@@ -94,6 +95,13 @@ class AppLaunchInterceptionEngine(
 
         // User entered a real foreground app; cancel any pending Home auto-disconnect timer.
         cancelHomeAutoDisconnectTimer()
+
+        // Exclude Tellyport itself, VPN utilities, Shizuku, and Settings from interception
+        // after cancelling the Home timer so editing profiles or managing VPNs isn't interrupted.
+        if (packageName in NON_INTERCEPTED_FOREGROUND_APPS) {
+            lastForegroundPackage = packageName
+            return InterceptionOutcome.Ignored
+        }
 
         val previousPackage = lastForegroundPackage
         val profiles = profilesProvider()
@@ -231,19 +239,22 @@ class AppLaunchInterceptionEngine(
             "com.android.launcher3"
         )
 
-        val IGNORED_PACKAGES: Set<String> = setOf(
-            OWN_PACKAGE,
+        val TRANSIENT_OVERLAY_PACKAGES: Set<String> = setOf(
             "android",
             "com.android.systemui",
             "com.google.android.permissioncontroller",
             "com.android.permissioncontroller",
             "com.android.packageinstaller",
             "com.google.android.packageinstaller",
-            "com.android.settings",
-            "com.android.tv.settings",
             "com.google.android.inputmethod.latin",
             "com.google.android.inputmethod.leanback",
-            "com.android.inputmethod.latin",
+            "com.android.inputmethod.latin"
+        )
+
+        val NON_INTERCEPTED_FOREGROUND_APPS: Set<String> = setOf(
+            OWN_PACKAGE,
+            "com.android.settings",
+            "com.android.tv.settings",
             VpnController.TAILSCALE_PACKAGE,
             VpnController.WG_TUNNEL_PACKAGE,
             VpnController.SOCKS_WRAPPER_PACKAGE,
