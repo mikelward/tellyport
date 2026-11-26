@@ -1,0 +1,24 @@
+# Scan of the workflows with zizmor (https://docs.zizmor.sh).
+#
+# Required across the fleet alongside `lanes` and `codex`. No `paths:` filter:
+# a filtered-out workflow creates no check run, which would stall a required
+# check on PRs not touching `.github/**`. Policy exceptions live in
+# .github/zizmor.yml beside this file.
+name: zizmor
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+permissions:
+  contents: read
+jobs:
+  zizmor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Scan the workflows
+        run: pipx run --spec zizmor==1.30.0 zizmor --no-progress --offline .
