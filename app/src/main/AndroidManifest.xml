@@ -44,20 +44,20 @@
     </queries>
 
     <application
-        android:name=".WarpmoApplication"
+        android:name=".TellyportApplication"
         android:allowBackup="false"
         android:banner="@drawable/tv_banner"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher"
         android:supportsRtl="true"
-        android:theme="@style/Theme.Warpmo">
+        android:theme="@style/Theme.Tellyport">
 
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTop"
-            android:theme="@style/Theme.Warpmo">
+            android:theme="@style/Theme.Tellyport">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

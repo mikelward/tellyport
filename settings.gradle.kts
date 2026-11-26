@@ -26,5 +26,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Warpmo"
+rootProject.name = "Tellyport"
 include(":app")

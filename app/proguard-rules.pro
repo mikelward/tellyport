@@ -9,10 +9,10 @@
     kotlinx.serialization.KSerializer serializer(...);
 }
 
--keep,includedescriptorclasses class com.warpmo.app.data.**$$serializer { *; }
--keepclassmembers class com.warpmo.app.data.** {
+-keep,includedescriptorclasses class tv.tellyport.data.**$$serializer { *; }
+-keepclassmembers class tv.tellyport.data.** {
     *** Companion;
 }
--keepclasseswithmembers class com.warpmo.app.data.** {
+-keepclasseswithmembers class tv.tellyport.data.** {
     kotlinx.serialization.KSerializer serializer(...);
 }

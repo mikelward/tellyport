@@ -1,9 +1,9 @@
 <resources>
-    <style name="Theme.Warpmo" parent="android:Theme.Material.NoActionBar">
-        <item name="android:windowBackground">@color/warpmo_bg</item>
-        <item name="android:statusBarColor">@color/warpmo_bg</item>
-        <item name="android:navigationBarColor">@color/warpmo_bg</item>
+    <style name="Theme.Tellyport" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/tellyport_bg</item>
+        <item name="android:statusBarColor">@color/tellyport_bg</item>
+        <item name="android:navigationBarColor">@color/tellyport_bg</item>
     </style>
 
-    <color name="warpmo_bg">#0B0F19</color>
+    <color name="tellyport_bg">#0B0F19</color>
 </resources>
