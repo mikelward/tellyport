@@ -1,5 +1,6 @@
 package tv.tellyport.service
 
+import android.annotation.SuppressLint
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -329,25 +330,32 @@ class MockLocationService : Service() {
                     .build()
                 manager.addTestProvider(provider, properties)
             } else {
-                @Suppress("DEPRECATION")
-                manager.addTestProvider(
-                    provider,
-                    false, // requiresNetwork
-                    false, // requiresSatellite
-                    false, // requiresCell
-                    false, // hasMonetaryCost
-                    true,  // supportsAltitude
-                    true,  // supportsSpeed
-                    true,  // supportsBearing
-                    Criteria.POWER_LOW,
-                    Criteria.ACCURACY_FINE
-                )
+                addLegacyTestProvider(manager, provider)
             }
 
             manager.setTestProviderEnabled(provider, true)
             registeredProviders.add(provider)
             return true
         }
+    }
+
+    @Suppress("DEPRECATION")
+    @SuppressLint("WrongConstant")
+    private fun addLegacyTestProvider(manager: LocationManager, provider: String) {
+        // Pre-API 31 addTestProvider takes Criteria.POWER_LOW / Criteria.ACCURACY_FINE; API 31+
+        // updated the @IntDef annotation to ProviderProperties constants with identical values.
+        manager.addTestProvider(
+            provider,
+            false, // requiresNetwork
+            false, // requiresSatellite
+            false, // requiresCell
+            false, // hasMonetaryCost
+            true,  // supportsAltitude
+            true,  // supportsSpeed
+            true,  // supportsBearing
+            Criteria.POWER_LOW,
+            Criteria.ACCURACY_FINE
+        )
     }
 
     private fun removeAllTestProviders() {
