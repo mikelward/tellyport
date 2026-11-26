@@ -389,4 +389,168 @@ class AppLaunchInterceptionEngineTest {
         assertTrue((outcomeB as InterceptionOutcome.Intercepted).progress is ActivationProgress.Active)
         assertEquals(listOf("au.com.stan.and"), dispatcher.startedActivities.map { it.`package` })
     }
+
+    @Test
+    fun openingA_thenB_thenA_withinDebounceWindow_supersedesBAndLaunchesA() = runTest {
+        val dispatcher = FakeDispatcher()
+        val vpnState = MutableStateFlow(VpnConnectionState(isConnected = false))
+        val mockStatus = MutableStateFlow(MockLocationStatus())
+        val forceStopper = FakeForceStopper()
+        var fakeClockMs = 20_000L
+
+        val nyProfile = RegionalProfile(
+            id = "preset-ny",
+            name = "New York",
+            regionCode = "US",
+            latitude = 40.7128,
+            longitude = -74.0060,
+            vpnBackend = VpnBackend.TAILSCALE,
+            mappedPackages = listOf("com.cbs.ott")
+        )
+        val sydneyProfile = RegionalProfile(
+            id = "preset-sydney",
+            name = "Sydney",
+            regionCode = "AU",
+            latitude = -33.8688,
+            longitude = 151.2093,
+            vpnBackend = VpnBackend.WG_TUNNEL,
+            tunnelName = "unifi-au-syd",
+            mappedPackages = listOf("au.com.stan.and")
+        )
+
+        val coordinator = ProfileActivationCoordinator(
+            vpnController = VpnController(dispatcher),
+            vpnStateFlow = vpnState,
+            mockLocationStatusFlow = mockStatus,
+            startMockLocation = { profile, sid ->
+                mockStatus.value = MockLocationStatus(
+                    isActive = true,
+                    sessionId = sid,
+                    activeProfileId = profile.id,
+                    activeProfileName = profile.name,
+                    configuredLatitude = profile.latitude,
+                    configuredLongitude = profile.longitude,
+                    injectionCount = 1L
+                )
+            },
+            stopMockLocation = {},
+            wgRemoteControlKeyProvider = { "wg-secret" },
+            stabilizationDelayMs = 100L
+        )
+
+        val engine = AppLaunchInterceptionEngine(
+            scope = this,
+            profilesProvider = { listOf(nyProfile, sydneyProfile) },
+            autoDisconnectSettingsProvider = { AutoDisconnectSettings(enabled = false) },
+            hasActiveSessionOrVpn = { vpnState.value.isConnected },
+            coordinator = coordinator,
+            forceStopper = forceStopper,
+            performGlobalHomeAction = { true },
+            clockElapsedMs = { fakeClockMs },
+            relaunchDebounceMs = 4_000L
+        )
+
+        // A starts, then B supersedes A at +500ms, then user switches back to A at +1000ms (still < 4s).
+        val jobA1 = async { engine.handleEvent(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED, "com.cbs.ott") }
+        runCurrent()
+
+        fakeClockMs += 500L
+        val jobB = async { engine.handleEvent(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED, "au.com.stan.and") }
+        runCurrent()
+        assertTrue(jobA1.isCancelled)
+
+        fakeClockMs += 500L
+        val jobA2 = async { engine.handleEvent(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED, "com.cbs.ott") }
+        runCurrent()
+        assertTrue(jobB.isCancelled)
+
+        vpnState.value = VpnConnectionState(
+            isConnected = true,
+            networkHandle = 1234L,
+            inferredBackend = InferredVpnBackend.TAILSCALE
+        )
+        advanceTimeBy(200L)
+
+        val outcomeA2 = jobA2.await()
+        assertTrue(outcomeA2 is InterceptionOutcome.Intercepted)
+        assertEquals(listOf("com.cbs.ott"), dispatcher.startedActivities.map { it.`package` })
+    }
+
+    @Test
+    fun homeEventDuringInterception_doesNotScheduleAutoDisconnectWhileConnecting() = runTest {
+        val dispatcher = FakeDispatcher()
+        val vpnState = MutableStateFlow(VpnConnectionState(isConnected = false))
+        val mockStatus = MutableStateFlow(MockLocationStatus())
+        var mockStopCount = 0
+
+        val nyProfile = RegionalProfile(
+            id = "preset-ny",
+            name = "New York",
+            regionCode = "US",
+            latitude = 40.7128,
+            longitude = -74.0060,
+            vpnBackend = VpnBackend.TAILSCALE,
+            mappedPackages = listOf("com.cbs.ott")
+        )
+
+        val coordinator = ProfileActivationCoordinator(
+            vpnController = VpnController(dispatcher),
+            vpnStateFlow = vpnState,
+            mockLocationStatusFlow = mockStatus,
+            startMockLocation = { profile, sid ->
+                mockStatus.value = MockLocationStatus(
+                    isActive = true,
+                    sessionId = sid,
+                    activeProfileId = profile.id,
+                    activeProfileName = profile.name,
+                    configuredLatitude = profile.latitude,
+                    configuredLongitude = profile.longitude,
+                    injectionCount = 1L
+                )
+            },
+            stopMockLocation = {
+                mockStopCount++
+                mockStatus.value = MockLocationStatus(isActive = false)
+            },
+            stabilizationDelayMs = 500L
+        )
+
+        val engine = AppLaunchInterceptionEngine(
+            scope = this,
+            profilesProvider = { listOf(nyProfile) },
+            // Grace period (5s) is shorter than the 6s VPN connection time below.
+            autoDisconnectSettingsProvider = { AutoDisconnectSettings(enabled = true, gracePeriodSeconds = 5) },
+            hasActiveSessionOrVpn = { vpnState.value.isConnected || mockStatus.value.isActive },
+            coordinator = coordinator,
+            forceStopper = FakeForceStopper(),
+            performGlobalHomeAction = { true }
+        )
+
+        val job = async {
+            engine.handleEvent(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED, "com.cbs.ott")
+        }
+        runCurrent()
+
+        // Interception's own GLOBAL_ACTION_HOME produces a launcher window event during activation.
+        val homeOutcome = engine.handleEvent(
+            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
+            "com.google.android.apps.tv.launcherx"
+        )
+        assertEquals(InterceptionOutcome.Ignored, homeOutcome)
+
+        // Advance 6 seconds (> 5s grace period), then VPN connects.
+        advanceTimeBy(6_000L)
+        vpnState.value = VpnConnectionState(
+            isConnected = true,
+            networkHandle = 555L,
+            inferredBackend = InferredVpnBackend.TAILSCALE
+        )
+        advanceTimeBy(600L)
+
+        val outcome = job.await()
+        assertTrue(outcome is InterceptionOutcome.Intercepted)
+        assertEquals(0, mockStopCount)
+        assertTrue(mockStatus.value.isActive)
+        assertEquals(listOf("com.cbs.ott"), dispatcher.startedActivities.map { it.`package` })
+    }
 }
