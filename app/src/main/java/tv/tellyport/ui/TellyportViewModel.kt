@@ -27,10 +27,12 @@ import tv.tellyport.data.ProfileRepository
 import tv.tellyport.data.RegionalProfile
 import tv.tellyport.data.SingleTailscaleConstraintException
 import tv.tellyport.data.VpnBackend
+import tv.tellyport.data.WorldCity
 import tv.tellyport.location.MockLocationPermissionChecker
 import tv.tellyport.location.MockLocationPermissionStatus
 import tv.tellyport.location.MockLocationState
 import tv.tellyport.location.MockLocationStatus
+import tv.tellyport.service.MockLocationService
 import tv.tellyport.shizuku.ShizukuForceStopper
 import tv.tellyport.shizuku.ShizukuStatus
 import tv.tellyport.vpn.ActivationProgress
@@ -47,9 +49,11 @@ data class InstalledTvApp(
 sealed class TellyportDestination {
     data object Dashboard : TellyportDestination()
     data object AppConfigurator : TellyportDestination()
+    data object WorldCityPicker : TellyportDestination()
     data object Diagnostics : TellyportDestination()
     data class ProfileEditor(
         val editingProfile: RegionalProfile?,
+        val initialCity: WorldCity? = null,
         val returnTo: TellyportDestination = Dashboard
     ) : TellyportDestination()
 }
@@ -98,6 +102,23 @@ class TellyportViewModel(
     },
     private val loadInstalledApps: suspend () -> List<InstalledTvApp> = {
         queryInstalledLaunchableApps(appContext)
+    },
+    private val startQuickMockLocation: (WorldCity, Long) -> Unit = { city, sessionId ->
+        MockLocationService.start(
+            context = appContext,
+            profile = RegionalProfile(
+                id = "city-${city.id}",
+                name = city.displayLabel,
+                regionCode = city.regionCode,
+                latitude = city.latitude,
+                longitude = city.longitude,
+                altitude = city.altitudeMeters,
+                accuracyMeters = 5.0f,
+                vpnBackend = VpnBackend.NONE,
+                autoLaunchApp = false
+            ),
+            sessionId = sessionId
+        )
     },
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) : ViewModel() {
@@ -182,6 +203,12 @@ class TellyportViewModel(
         _destination.value = TellyportDestination.AppConfigurator
     }
 
+    fun openWorldCityPicker() {
+        _bannerMessage.value = null
+        refreshDiagnostics()
+        _destination.value = TellyportDestination.WorldCityPicker
+    }
+
     fun refreshInstalledApps() {
         refreshInstalledAppsAsync()
     }
@@ -191,11 +218,22 @@ class TellyportViewModel(
         _destination.value = TellyportDestination.Diagnostics
     }
 
-    fun openCreateProfile(returnTo: TellyportDestination = TellyportDestination.Dashboard) {
+    fun openCreateProfile(
+        returnTo: TellyportDestination = TellyportDestination.Dashboard,
+        initialCity: WorldCity? = null
+    ) {
         refreshInstalledAppsAsync()
         _destination.value = TellyportDestination.ProfileEditor(
             editingProfile = null,
+            initialCity = initialCity,
             returnTo = returnTo
+        )
+    }
+
+    fun openCreateProfileForCity(city: WorldCity) {
+        openCreateProfile(
+            returnTo = TellyportDestination.Dashboard,
+            initialCity = city
         )
     }
 
@@ -213,8 +251,8 @@ class TellyportViewModel(
     fun navigateBack() {
         when (val current = _destination.value) {
             is TellyportDestination.ProfileEditor -> {
-                if (current.returnTo == TellyportDestination.AppConfigurator) {
-                    _destination.value = TellyportDestination.AppConfigurator
+                if (current.returnTo != TellyportDestination.Dashboard) {
+                    _destination.value = current.returnTo
                 } else {
                     navigateToDashboard()
                 }
@@ -231,6 +269,31 @@ class TellyportViewModel(
 
     fun dismissBannerMessage() {
         _bannerMessage.value = null
+    }
+
+    fun startQuickMockCity(city: WorldCity) {
+        refreshDiagnostics()
+        val perms = _permissionStatus.value
+        if (!perms.hasFineLocationPermission) {
+            _bannerMessage.value = "Grant Location permission first so Tellyport can mock ${city.displayLabel}."
+            return
+        }
+        if (!perms.isMockLocationAppSelected) {
+            _bannerMessage.value = "Select Tellyport as the mock location app in Developer Options (or run the ADB command in Setup)."
+            return
+        }
+
+        val pendingJob = activationJob
+        activationJob = null
+        activatingProfileId = null
+        viewModelScope.launch {
+            pendingJob?.cancelAndJoin()
+            coordinator.cancelActiveActivation()
+            val sessionId = MockLocationState.nextSessionId()
+            startQuickMockLocation(city, sessionId)
+            _destination.value = TellyportDestination.Dashboard
+            _bannerMessage.value = "Mock location set to ${city.displayLabel} (${city.formattedPopulation} pop.)."
+        }
     }
 
     fun assignAppToProfile(

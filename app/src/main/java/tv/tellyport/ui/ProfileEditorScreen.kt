@@ -1,5 +1,6 @@
 package tv.tellyport.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -18,6 +19,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Clear
+import androidx.compose.material.icons.rounded.LocationCity
 import androidx.compose.material.icons.rounded.Save
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -42,6 +45,8 @@ import tv.tellyport.data.ProfilePresets
 import tv.tellyport.data.ProfileRepository
 import tv.tellyport.data.RegionalProfile
 import tv.tellyport.data.VpnBackend
+import tv.tellyport.data.WorldCity
+import tv.tellyport.data.WorldCityCatalog
 import tv.tellyport.ui.components.TellyportPrimaryButton
 import tv.tellyport.ui.components.TellyportSecondaryButton
 import tv.tellyport.ui.components.TellyportSelectableChip
@@ -52,22 +57,30 @@ import java.util.UUID
 @Composable
 fun ProfileEditorScreen(
     existingProfile: RegionalProfile?,
+    initialCity: WorldCity? = null,
     allProfiles: List<RegionalProfile>,
     installedApps: List<InstalledTvApp>,
     currentWgRemoteControlKey: String,
     onSave: (RegionalProfile, String?) -> Unit,
     onCancel: () -> Unit
 ) {
-    var name by remember(existingProfile) { mutableStateOf(existingProfile?.name ?: "") }
-    var regionCode by remember(existingProfile) { mutableStateOf(existingProfile?.regionCode ?: "US") }
-    var latitudeText by remember(existingProfile) {
-        mutableStateOf((existingProfile?.latitude ?: 40.7128).toString())
+    var name by remember(existingProfile, initialCity) {
+        mutableStateOf(existingProfile?.name ?: initialCity?.name ?: "")
     }
-    var longitudeText by remember(existingProfile) {
-        mutableStateOf((existingProfile?.longitude ?: -74.0060).toString())
+    var lastAutoCityName by remember(existingProfile, initialCity) {
+        mutableStateOf(initialCity?.name)
     }
-    var altitudeText by remember(existingProfile) {
-        mutableStateOf((existingProfile?.altitude ?: 10.0).toString())
+    var regionCode by remember(existingProfile, initialCity) {
+        mutableStateOf(existingProfile?.regionCode ?: initialCity?.regionCode ?: "US")
+    }
+    var latitudeText by remember(existingProfile, initialCity) {
+        mutableStateOf((existingProfile?.latitude ?: initialCity?.latitude ?: 40.7128).toString())
+    }
+    var longitudeText by remember(existingProfile, initialCity) {
+        mutableStateOf((existingProfile?.longitude ?: initialCity?.longitude ?: -74.0060).toString())
+    }
+    var altitudeText by remember(existingProfile, initialCity) {
+        mutableStateOf((existingProfile?.altitude ?: initialCity?.altitudeMeters ?: 10.0).toString())
     }
     var accuracyText by remember(existingProfile) {
         mutableStateOf((existingProfile?.accuracyMeters ?: 5.0f).toString())
@@ -89,6 +102,53 @@ fun ProfileEditorScreen(
         mutableStateOf(existingProfile?.autoLaunchApp ?: true)
     }
     var validationError by remember { mutableStateOf<String?>(null) }
+
+    var citySearchQuery by remember { mutableStateOf("") }
+    var showFullCityBrowser by remember { mutableStateOf(false) }
+
+    val allWorldCities = remember { WorldCityCatalog.cities }
+    val inlineCityMatches = remember(citySearchQuery, allWorldCities) {
+        if (citySearchQuery.isBlank()) {
+            emptyList()
+        } else {
+            WorldCityCatalog.search(query = citySearchQuery, limit = 8, source = allWorldCities)
+        }
+    }
+
+    val applySelectedCity: (WorldCity) -> Unit = { city ->
+        if (name.isBlank() ||
+            name == lastAutoCityName ||
+            ProfilePresets.locationPresets.any { it.defaultName == name }
+        ) {
+            name = city.name
+            lastAutoCityName = city.name
+        }
+        regionCode = city.regionCode
+        latitudeText = city.latitude.toString()
+        longitudeText = city.longitude.toString()
+        altitudeText = city.altitudeMeters.toString()
+        citySearchQuery = ""
+        showFullCityBrowser = false
+    }
+
+    if (showFullCityBrowser) {
+        BackHandler {
+            showFullCityBrowser = false
+        }
+        val currentNearest = remember(latitudeText, longitudeText) {
+            val lat = latitudeText.trim().toDoubleOrNull()
+            val lon = longitudeText.trim().toDoubleOrNull()
+            if (lat != null && lon != null) WorldCityCatalog.findNearestCity(lat, lon) else null
+        }
+        WorldCityPickerScreen(
+            title = "Select Mock Location City (1M+ Pop.)",
+            subtitle = "Choose any world city over 1M population to fill coordinates & altitude",
+            initialSelectedCityId = currentNearest?.id,
+            onBack = { showFullCityBrowser = false },
+            onSelectForProfile = applySelectedCity
+        )
+        return
+    }
 
     val conflictingTailscaleProfile = remember(allProfiles, existingProfile) {
         ProfileRepository.findTailscaleProfile(allProfiles, excludingProfileId = existingProfile?.id)
@@ -198,8 +258,60 @@ fun ProfileEditorScreen(
             )
         }
 
-        // Quick Location Presets
-        EditorSection(title = "Location Presets") {
+        // World City Fuzzy Search & Quick Location Presets
+        EditorSection(title = "Mock Location City (${allWorldCities.size} World Cities, 1M+ Pop.)") {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TellyportTextField(
+                    value = citySearchQuery,
+                    onValueChange = { citySearchQuery = it },
+                    label = "Fuzzy-Find World City",
+                    placeholder = "Type city, country, state, or code (e.g. melb, sao paulo, tokyo, nyc)...",
+                    modifier = Modifier.weight(1f)
+                )
+                if (citySearchQuery.isNotEmpty()) {
+                    TellyportSecondaryButton(
+                        text = "Clear",
+                        icon = Icons.Rounded.Clear,
+                        onClick = { citySearchQuery = "" }
+                    )
+                }
+                TellyportPrimaryButton(
+                    text = "Browse All ${allWorldCities.size}",
+                    icon = Icons.Rounded.LocationCity,
+                    onClick = { showFullCityBrowser = true }
+                )
+            }
+
+            if (citySearchQuery.isNotBlank()) {
+                if (inlineCityMatches.isEmpty()) {
+                    Text(
+                        text = "No world cities (1M+ pop.) matched \"$citySearchQuery\".",
+                        color = TellyportColors.TextMuted,
+                        fontSize = 12.sp
+                    )
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        inlineCityMatches.forEach { city ->
+                            WorldCityRowCard(
+                                city = city,
+                                isSelected = false,
+                                onClick = { applySelectedCity(city) }
+                            )
+                        }
+                    }
+                }
+            }
+
+            Text(
+                text = "Quick Presets:",
+                color = TellyportColors.TextSecondary,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold
+            )
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -211,8 +323,12 @@ fun ProfileEditorScreen(
                         label = preset.label,
                         selected = isSelected,
                         onClick = {
-                            if (name.isBlank() || ProfilePresets.locationPresets.any { it.defaultName == name }) {
+                            if (name.isBlank() ||
+                                name == lastAutoCityName ||
+                                ProfilePresets.locationPresets.any { it.defaultName == name }
+                            ) {
                                 name = preset.defaultName
+                                lastAutoCityName = preset.defaultName
                             }
                             regionCode = preset.regionCode
                             latitudeText = preset.latitude.toString()

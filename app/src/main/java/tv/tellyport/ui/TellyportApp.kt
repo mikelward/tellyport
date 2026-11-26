@@ -26,6 +26,7 @@ fun TellyportApp(
                     onActivateProfile = viewModel::activateProfile,
                     onDisconnectAll = viewModel::disconnectAll,
                     onOpenAppConfigurator = viewModel::openAppConfigurator,
+                    onOpenWorldCityPicker = viewModel::openWorldCityPicker,
                     onCreateProfile = { viewModel.openCreateProfile() },
                     onEditProfile = { viewModel.openEditProfile(it) },
                     onDeleteProfile = viewModel::deleteProfile,
@@ -57,6 +58,21 @@ fun TellyportApp(
                 )
             }
 
+            TellyportDestination.WorldCityPicker -> {
+                WorldCityPickerScreen(
+                    activeMockCityName = if (state.mockLocationStatus.isActive) {
+                        state.mockLocationStatus.activeProfileName
+                    } else {
+                        null
+                    },
+                    bannerMessage = state.bannerMessage,
+                    onDismissBanner = viewModel::dismissBannerMessage,
+                    onBack = viewModel::navigateToDashboard,
+                    onMockCityNow = viewModel::startQuickMockCity,
+                    onCreateProfileForCity = viewModel::openCreateProfileForCity
+                )
+            }
+
             TellyportDestination.Diagnostics -> {
                 DiagnosticsScreen(
                     state = state,
@@ -82,6 +98,7 @@ fun TellyportApp(
             is TellyportDestination.ProfileEditor -> {
                 ProfileEditorScreen(
                     existingProfile = destination.editingProfile,
+                    initialCity = destination.initialCity,
                     allProfiles = state.profiles,
                     installedApps = state.installedApps,
                     currentWgRemoteControlKey = state.wgRemoteControlKey,

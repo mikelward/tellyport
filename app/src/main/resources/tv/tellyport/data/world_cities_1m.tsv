@@ -1,0 +1,821 @@
+# World cities with population >= 1,000,000 (SimpleMaps Basic + GeoNames cities15000, CC BY 4.0)
+# name	asciiName	adminName	country	countryCode	latitude	longitude	altitudeMeters	population
+Tokyo	Tokyo	Tōkyō	Japan	JP	35.6897	139.6922	44	37732000
+Jakarta	Jakarta	Jakarta	Indonesia	ID	-6.175	106.8275	16	33756000
+Delhi	Delhi	Delhi	India	IN	28.61	77.23	211	32226000
+Guangzhou	Guangzhou	Guangdong	China	CN	23.13	113.26	15	26940000
+Mumbai	Mumbai	Mahārāshtra	India	IN	19.0761	72.8775	8	24973000
+Manila	Manila	Manila	Philippines	PH	14.5958	120.9772	15	24922000
+Shanghai	Shanghai	Shanghai	China	CN	31.2286	121.4747	35	24073000
+São Paulo	Sao Paulo	São Paulo	Brazil	BR	-23.55	-46.6333	741	23086000
+Seoul	Seoul	Seoul	South Korea	KR	37.56	126.99	38	23016000
+Mexico City	Mexico City	Ciudad de México	Mexico	MX	19.4333	-99.1333	2240	21804000
+Cairo	Cairo	Al Qāhirah	Egypt	EG	30.0444	31.2358	27	20296000
+New York	New York	New York	United States	US	40.6943	-73.9249	11	18908608
+Dhaka	Dhaka	Dhaka	Bangladesh	BD	23.7639	90.3889	13	18627000
+Beijing	Beijing	Beijing	China	CN	39.9067	116.3975	49	18522000
+Kolkāta	Kolkata	West Bengal	India	IN	22.5675	88.37	11	18502000
+Bangkok	Bangkok	Krung Thep Maha Nakhon	Thailand	TH	13.7525	100.4942	12	18007000
+Shenzhen	Shenzhen	Guangdong	China	CN	22.5415	114.0596	9	17619000
+Moscow	Moscow	Moskva	Russia	RU	55.7558	37.6172	155	17332000
+Buenos Aires	Buenos Aires	Buenos Aires, Ciudad Autónoma de	Argentina	AR	-34.6033	-58.3817	31	16710000
+Lagos	Lagos	Lagos	Nigeria	NG	6.455	3.3841	11	16637000
+Istanbul	Istanbul	İstanbul	Turkey	TR	41.0136	28.955	39	16079000
+Karachi	Karachi	Sindh	Pakistan	PK	24.86	67.01	8	15738000
+Bangalore	Bangalore	Karnātaka	India	IN	12.9789	77.5917	920	15386000
+Ho Chi Minh City	Ho Chi Minh City	Hồ Chí Minh	Vietnam	VN	10.7756	106.7019	12	15136000
+Ōsaka	Osaka	Ōsaka	Japan	JP	34.6939	135.5022	4	15126000
+Chengdu	Chengdu	Sichuan	China	CN	30.66	104.0633	499	14645000
+Tehran	Tehran	Tehrān	Iran	IR	35.6892	51.3889	1178	14148000
+Kinshasa	Kinshasa	Kinshasa	Congo (Kinshasa)	CD	-4.3219	15.3119	281	12836000
+Rio de Janeiro	Rio de Janeiro	Rio de Janeiro	Brazil	BR	-22.9111	-43.2056	50	12592000
+Chennai	Chennai	Tamil Nādu	India	IN	13.0825	80.275	14	12395000
+Xi’an	Xi'an	Shaanxi	China	CN	34.2611	108.9422	416	12328000
+Lahore	Lahore	Punjab	Pakistan	PK	31.5497	74.3436	216	12306000
+Chongqing	Chongqing	Chongqing	China	CN	29.5637	106.5504	289	12135000
+Los Angeles	Los Angeles	California	United States	US	34.1141	-118.4068	186	11922389
+Baoding	Baoding	Hebei	China	CN	38.874	115.464	15	11544036
+London	London	Greater London	United Kingdom	GB	51.5072	-0.1275	25	11262000
+Paris	Paris	Île-de-France	France	FR	48.8567	2.3522	44	11060000
+Linyi	Linyi	Shandong	China	CN	35.1038	118.3564	69	11018365
+Dongguan	Dongguan	Guangdong	China	CN	23.021	113.752	1	10646000
+Hyderābād	Hyderabad	Telangāna	India	IN	17.3617	78.4747	515	10494000
+Tianjin	Tianjin	Tianjin	China	CN	39.1336	117.2054	11	10368000
+Lima	Lima	Lima	Peru	PE	-12.06	-77.0375	121	10320000
+Wuhan	Wuhan	Hubei	China	CN	30.5934	114.3046	20	10251000
+Nanyang	Nanyang	Henan	China	CN	32.9987	112.5292	126	9713112
+Hangzhou	Hangzhou	Zhejiang	China	CN	30.267	120.153	12	9523000
+Foshan	Foshan	Guangdong	China	CN	23.0214	113.1216	5	9498863
+Nagoya	Nagoya	Aichi	Japan	JP	35.1833	136.9	23	9197000
+Tongshan	Tongshan	Jiangsu	China	CN	34.204	117.284	35	9083790
+Luanda	Luanda	Luanda	Angola	AO	-8.8383	13.2344	73	9051000
+Zhoukou	Zhoukou	Henan	China	CN	33.625	114.6418	48	9026015
+Ganzhou	Ganzhou	Jiangxi	China	CN	25.831	114.933	117	8970014
+Kuala Lumpur	Kuala Lumpur	Kuala Lumpur	Malaysia	MY	3.1478	101.6953	56	8911000
+Heze	Heze	Shandong	China	CN	35.2343	115.4796	53	8795939
+Quanzhou	Quanzhou	Fujian	China	CN	24.8744	118.6757	17	8782285
+Johannesburg	Johannesburg	Gauteng	South Africa	ZA	-26.2044	28.0456	1767	8500000
+Chicago	Chicago	Illinois	United States	US	41.8375	-87.6866	182	8497759
+Nanjing	Nanjing	Jiangsu	China	CN	32.0608	118.7789	22	8422000
+Jining	Jining	Shandong	China	CN	35.4151	116.5871	43	8357897
+Hanoi	Hanoi	Hà Nội	Vietnam	VN	21.0	105.85	15	8246600
+Pune	Pune	Mahārāshtra	India	IN	18.5203	73.8567	554	8231000
+Fuyang	Fuyang	Anhui	China	CN	32.89	115.814	31	8200264
+Ahmedabad	Ahmedabad	Gujarāt	India	IN	23.0225	72.5714	56	8009000
+Bogotá	Bogota	Bogotá	Colombia	CO	4.7111	-74.0722	2557	7968095
+Shenyang	Shenyang	Liaoning	China	CN	41.8025	123.4281	53	7964000
+Dar es Salaam	Dar es Salaam	Dar es Salaam	Tanzania	TZ	-6.8161	39.2803	24	7962000
+Khartoum	Khartoum	Khartoum	Sudan	SD	15.6	32.5	391	7869000
+Shangqiu	Shangqiu	Henan	China	CN	34.415	115.656	52	7816831
+Hong Kong	Hong Kong		Hong Kong	HK	22.3	114.2	2	7450000
+Cangzhou	Cangzhou	Hebei	China	CN	38.3047	116.8387	15	7300783
+Riyadh	Riyadh	Ar Riyāḑ	Saudi Arabia	SA	24.6333	46.7167	612	7237000
+Santiago	Santiago	Región Metropolitana	Chile	CL	-33.4372	-70.6506	556	7171000
+Xingtai	Xingtai	Hebei	China	CN	37.0717	114.5048	71	7111106
+Zhumadian	Zhumadian	Henan	China	CN	33.014	114.022	82	7008427
+Chattogram	Chattogram	Chattogram	Bangladesh	BD	22.335	91.8325	15	7000000
+Surabaya	Surabaya	Jawa Timur	Indonesia	ID	-7.2458	112.7378	8	6998000
+Zhanjiang	Zhanjiang	Guangdong	China	CN	21.2701	110.3575	16	6981236
+Bijie	Bijie	Guizhou	China	CN	27.284	105.292	1471	6899636
+Yancheng	Yancheng	Jiangsu	China	CN	33.3482	120.1626	3	6709629
+Hengyang	Hengyang	Hunan	China	CN	26.894	112.572	66	6645243
+Zunyi	Zunyi	Guizhou	China	CN	27.722	107.031	867	6606675
+Shaoyang	Shaoyang	Hunan	China	CN	27.2395	111.4679	243	6563520
+Sūrat	Surat	Gujarāt	India	IN	21.1702	72.8311	20	6538000
+Shangrao	Shangrao	Jiangxi	China	CN	28.4551	117.9431	84	6435300
+Xinyang	Xinyang	Henan	China	CN	32.149	114.091	89	6234401
+Madrid	Madrid	Madrid	Spain	ES	40.4169	-3.7033	665	6211000
+Baghdad	Baghdad	Baghdād	Iraq	IQ	33.3153	44.3661	41	6183000
+Maoming	Maoming	Guangdong	China	CN	21.6627	110.9255	31	6174050
+Jieyang	Jieyang	Guangdong	China	CN	23.551	116.3727	7	6089400
+Miami	Miami	Florida	United States	US	25.784	-80.2101	2	6080145
+Singapore	Singapore		Singapore	SG	1.3	103.8	22	5983000
+Houston	Houston	Texas	United States	US	29.786	-95.3885	12	5970127
+Liaocheng	Liaocheng	Shandong	China	CN	36.4559	115.9852	32	5952128
+Huanggang	Huanggang	Hubei	China	CN	30.4537	114.8724	46	5882719
+Dalian	Dalian	Liaoning	China	CN	38.9	121.6	33	5871474
+Dallas	Dallas	Texas	United States	US	32.7935	-96.7667	128	5830932
+Qingdao	Qingdao	Shandong	China	CN	36.0669	120.3827	16	5818255
+Yulin	Yulin	Guangxi	China	CN	22.654	110.181	87	5796766
+Douala	Douala	Littoral	Cameroon	CM	4.05	9.7	19	5768400
+Qujing	Qujing	Yunnan	China	CN	25.491	103.796	1887	5765775
+Nangandao	Nangandao	Henan	China	CN	35.3036	113.9268	82	5708191
+Philadelphia	Philadelphia	Pennsylvania	United States	US	40.0077	-75.1339	36	5683533
+Pudong	Pudong	Shanghai	China	CN	31.2347	121.5064	9	5681512
+Toronto	Toronto	Ontario	Canada	CA	43.7417	-79.3733	173	5647656
+Zhengzhou	Zhengzhou	Henan	China	CN	34.764	113.684	104	5621593
+Dezhou	Dezhou	Shandong	China	CN	37.436	116.359	25	5611194
+Nanchong	Nanchong	Sichuan	China	CN	30.8372	106.1106	287	5607565
+Jinan	Jinan	Shandong	China	CN	36.6702	117.0207	32	5606374
+Giza	Giza	Al Jīzah	Egypt	EG	29.987	31.2118	19	5598402
+Nairobi	Nairobi	Nairobi City	Kenya	KE	-1.2864	36.8172	1684	5545000
+Guadalajara	Guadalajara	Jalisco	Mexico	MX	20.6767	-103.3475	1546	5525000
+Ankara	Ankara	Ankara	Turkey	TR	39.93	32.85	850	5503985
+Tai’an	Tai'an	Shandong	China	CN	36.202	117.087	143	5472217
+Langfang	Langfang	Hebei	China	CN	39.5383	116.6835	19	5464087
+Dazhou	Dazhou	Sichuan	China	CN	31.2093	107.4678	292	5385422
+Saint Petersburg	Saint Petersburg	Sankt-Peterburg	Russia	RU	59.9375	30.3086	11	5384342
+Monterrey	Monterrey	Nuevo León	Mexico	MX	25.6667	-100.3	560	5341171
+Belo Horizonte	Belo Horizonte	Minas Gerais	Brazil	BR	-19.9167	-43.9333	888	5328000
+Suzhou	Suzhou	Anhui	China	CN	33.6333	116.9683	34	5324476
+Yongzhou	Yongzhou	Hunan	China	CN	26.42	111.613	101	5289824
+Changde	Changde	Hunan	China	CN	29.031	111.699	38	5279102
+Xiangyang	Xiangyang	Hubei	China	CN	32.01	112.122	71	5260951
+Rangoon	Rangoon	Yangon	Burma	MM	16.795	96.16	30	5209541
+Atlanta	Atlanta	Georgia	United States	US	33.7628	-84.422	320	5180179
+Washington	Washington	District of Columbia	United States	US	38.9047	-77.0163	15	5116378
+Zhaotong	Zhaotong	Yunnan	China	CN	27.338	103.717	1974	5092611
+Zhangzhou	Zhangzhou	Fujian	China	CN	24.513	117.647	14	5054328
+Melbourne	Melbourne	Victoria	Australia	AU	-37.8142	144.9631	25	5031195
+Yichun	Yichun	Jiangxi	China	CN	27.816	114.417	99	5007702
+Bozhou	Bozhou	Anhui	China	CN	33.8626	115.7742	40	4996844
+Suqian	Suqian	Jiangsu	China	CN	33.9331	118.2831	23	4986192
+Abidjan	Abidjan	Abidjan	Côte d’Ivoire	CI	5.3167	-4.0333	6	4980000
+Ji’an	Ji'an	Jiangxi	China	CN	27.0912	114.9668	72	4956600
+Guilin	Guilin	Guangxi	China	CN	25.275	110.296	141	4931137
+Pingdingshan	Pingdingshan	Henan	China	CN	33.735	113.2999	82	4904701
+Berlin	Berlin	Berlin	Germany	DE	52.52	13.405	48	4890363
+Alexandria	Alexandria	Al Iskandarīyah	Egypt	EG	31.1975	29.8925	9	4870000
+Mianyang	Mianyang	Sichuan	China	CN	31.468	104.679	471	4868243
+Sydney	Sydney	New South Wales	Australia	AU	-33.8678	151.21	58	4840600
+Huanglongsi	Huanglongsi	Henan	China	CN	34.795	114.345	76	4824016
+Barcelona	Barcelona	Catalonia	Spain	ES	41.3828	2.1769	29	4800000
+Yuncheng	Yuncheng	Shanxi	China	CN	35.0267	111.007	361	4774508
+Cape Town	Cape Town	Western Cape	South Africa	ZA	-33.9253	18.4239	25	4770313
+Changsha	Changsha	Hunan	China	CN	28.228	112.939	67	4766296
+Jeddah	Jeddah	Makkah al Mukarramah	Saudi Arabia	SA	21.5433	39.1728	7	4697000
+Weinan	Weinan	Shaanxi	China	CN	34.5206	109.471	354	4688744
+Chenzhou	Chenzhou	Hunan	China	CN	25.77	113.016	180	4667134
+Jiangmen	Jiangmen	Guangdong	China	CN	22.5789	113.0815	11	4630300
+Jiujiang	Jiujiang	Jiangxi	China	CN	29.661	115.954	41	4600276
+Xinpu	Xinpu	Jiangsu	China	CN	34.5966	119.2214	1	4599360
+Yibin	Yibin	Sichuan	China	CN	28.752	104.643	323	4588804
+Huaihua	Huaihua	Hunan	China	CN	27.5698	110.0016	236	4587594
+Yangzhou	Yangzhou	Jiangsu	China	CN	32.3912	119.4363	14	4559797
+Taizhou	Taizhou	Jiangsu	China	CN	32.4567	119.9229	10	4512762
+Kunming	Kunming	Yunnan	China	CN	25.0464	102.7094	1895	4422686
+Yiyang	Yiyang	Hunan	China	CN	28.5549	112.356	73	4413800
+Changchun	Changchun	Jilin	China	CN	43.897	125.326	206	4408154
+Lu’an	Lu'an	Anhui	China	CN	31.736	116.52	81	4393699
+Jiangguanchi	Jiangguanchi	Henan	China	CN	34.0244	113.8201	71	4379998
+Meizhou	Meizhou	Guangdong	China	CN	24.289	116.122	84	4378800
+Ürümqi	Urumqi	Xinjiang	China	CN	43.8225	87.6125	862	4335017
+Suzhou	Suzhou	Jiangsu	China	CN	31.3	120.6194	10	4330000
+Boston	Boston	Massachusetts	United States	US	42.3188	-71.0852	18	4328315
+İzmir	Izmir	İzmir	Turkey	TR	38.42	27.14	122	4320519
+Guigang	Guigang	Guangxi	China	CN	23.112	109.599	40	4316262
+Shantou	Shantou	Guangdong	China	CN	23.354	116.682	3	4312192
+Kabul	Kabul	Kābul	Afghanistan	AF	34.5253	69.1783	1798	4273156
+Xiaoganzhan	Xiaoganzhan	Hubei	China	CN	30.918	113.957	35	4270371
+Bamako	Bamako	Bamako	Mali	ML	12.6392	-8.0028	374	4227569
+Luzhou	Luzhou	Sichuan	China	CN	28.871	105.442	256	4218427
+Hefei	Hefei	Anhui	China	CN	31.8206	117.2273	24	4216940
+Hengshui	Hengshui	Hebei	China	CN	37.739	115.669	22	4212933
+Fortaleza	Fortaleza	Ceará	Brazil	BR	-3.7275	-38.5275	18	4167996
+Anqing	Anqing	Anhui	China	CN	30.5318	117.1153	19	4165284
+Liuzhou	Liuzhou	Guangxi	China	CN	24.3264	109.4281	102	4157934
+Zhangjiakou	Zhangjiakou	Hebei	China	CN	40.769	114.886	744	4118908
+Zhaoqing	Zhaoqing	Guangdong	China	CN	23.05	112.4667	16	4113594
+Shijiazhuang	Shijiazhuang	Hebei	China	CN	38.0425	114.51	77	4098243
+Ningbo	Ningbo	Zhejiang	China	CN	29.8603	121.6245	15	4087523
+Qiqihar	Qiqihar	Heilongjiang	China	CN	47.3549	123.9182	146	4067489
+Phoenix	Phoenix	Arizona	United States	US	33.5722	-112.0892	342	4064275
+Fuzhou	Fuzhou	Jiangxi	China	CN	27.949	116.358	53	4047200
+Chifeng	Chifeng	Inner Mongolia	China	CN	42.257	118.888	570	4035967
+Xiaoxita	Xiaoxita	Hubei	China	CN	30.692	111.287	63	4017607
+Amman	Amman	Al ‘Āşimah	Jordan	JO	31.9497	35.9328	757	4007526
+Chuzhou	Chuzhou	Anhui	China	CN	32.256	118.333	24	3987054
+Linfen	Linfen	Shanxi	China	CN	36.088	111.519	451	3976481
+Qingyuan	Qingyuan	Guangdong	China	CN	23.682	113.056	11	3969473
+Xianyang	Xianyang	Shaanxi	China	CN	34.3299	108.7088	387	3959842
+Loudi	Loudi	Hunan	China	CN	27.6998	111.9944	135	3931800
+Binzhou	Binzhou	Shandong	China	CN	37.383	117.971	14	3928568
+Zhuzhou	Zhuzhou	Hunan	China	CN	27.829	113.133	54	3902738
+Taiyuan	Taiyuan	Shanxi	China	CN	37.8704	112.5497	795	3875053
+Nanning	Nanning	Guangxi	China	CN	22.8167	108.3275	91	3837978
+Harbin	Harbin	Heilongjiang	China	CN	45.7576	126.6409	140	3830000
+Abuja	Abuja	Federal Capital Territory	Nigeria	NG	9.0667	7.4833	476	3770000
+Yokohama	Yokohama	Kanagawa	Japan	JP	35.4442	139.6381	21	3757630
+Suihua	Suihua	Heilongjiang	China	CN	46.654	126.969	179	3756167
+Zaozhuang	Zaozhuang	Shandong	China	CN	34.8109	117.3238	53	3729140
+Detroit	Detroit	Michigan	United States	US	42.3834	-83.1024	192	3725908
+Xiamen	Xiamen	Fujian	China	CN	24.4796	118.0889	12	3707090
+Neijiang	Neijiang	Sichuan	China	CN	29.5802	105.058	349	3702847
+Montréal	Montreal	Quebec	Canada	CA	45.5089	-73.5617	36	3675219
+Fuzhou	Fuzhou	Fujian	China	CN	26.0743	119.2964	14	3671192
+Baicheng	Baicheng	Guangxi	China	CN	23.903	106.619	144	3669400
+Wuhu	Wuhu	Anhui	China	CN	31.3526	118.4331	9	3644420
+Yulinshi	Yulinshi	Shaanxi	China	CN	38.2858	109.7341	1056	3634750
+Medan	Medan	Sumatera Utara	Indonesia	ID	3.5894	98.6739	26	3632000
+Wenzhou	Wenzhou	Zhejiang	China	CN	27.9938	120.6993	10	3604446
+Changzhou	Changzhou	Jiangsu	China	CN	31.811	119.974	9	3601079
+Puyang	Puyang	Henan	China	CN	35.7627	115.0292	60	3598740
+Jiaozuo	Jiaozuo	Henan	China	CN	35.2157	113.2419	90	3590700
+Nanchang	Nanchang	Jiangxi	China	CN	28.683	115.858	20	3576547
+Seattle	Seattle	Washington	United States	US	47.6211	-122.3244	56	3561397
+Ibadan	Ibadan	Oyo	Nigeria	NG	7.3964	3.9167	181	3552000
+Casablanca	Casablanca	Casablanca-Settat	Morocco	MA	33.5333	-7.5833	125	3499000
+Kumasi	Kumasi	Ashanti	Ghana	GH	6.7	-1.625	270	3490030
+Deyang	Deyang	Sichuan	China	CN	31.127	104.398	501	3456161
+Busan	Busan	Busan	South Korea	KR	35.18	129.075	15	3453198
+Hohhot	Hohhot	Inner Mongolia	China	CN	40.842	111.749	1051	3446100
+Hechi	Hechi	Guangxi	China	CN	24.693	108.085	222	3417945
+Algiers	Algiers	Alger	Algeria	DZ	36.7539	3.0589	113	3415811
+Tangshan	Tangshan	Hebei	China	CN	39.6294	118.1739	7	3399231
+Shiyan	Shiyan	Hubei	China	CN	32.629	110.7987	247	3398000
+Lucknow	Lucknow	Uttar Pradesh	India	IN	26.85	80.95	126	3382000
+Mashhad	Mashhad	Khorāsān-e Raẕavī	Iran	IR	36.3264	59.5433	980	3372090
+San Francisco	San Francisco	California	United States	US	37.7558	-122.4449	60	3364979
+Boankra	Boankra	Ashanti	Ghana	GH	6.6944	-1.4028	328	3348000
+Lüliang	Lueliang		China	CN	37.5192	111.1444	959	3346500
+Durban	Durban		South Africa	ZA	-29.8579	31.0292	21	3338026
+Dubai	Dubai	Dubayy	United Arab Emirates	AE	25.2631	55.2972	11	3331420
+Anshan	Anshan	Liaoning	China	CN	41.108	122.994	55	3325372
+Baojishi	Baojishi	Shaanxi	China	CN	34.363	107.238	567	3321853
+Qinzhou	Qinzhou	Guangxi	China	CN	21.981	108.654	12	3304400
+Guiyang	Guiyang	Guizhou	China	CN	26.647	106.63	1087	3299724
+Bengbu	Bengbu	Anhui	China	CN	32.917	117.389	31	3296408
+Bazhou	Bazhou	Sichuan	China	CN	31.868	106.748	393	3283148
+Suining	Suining	Sichuan	China	CN	30.533	105.593	291	3252619
+Wuxi	Wuxi	Jiangsu	China	CN	31.491	120.312	10	3245179
+Kotla Qasim Khan	Kotla Qasim Khan	Punjab	Pakistan	PK	32.5833	73.75	229	3219375
+Hanzhong	Hanzhong	Shaanxi	China	CN	33.0664	107.0232	517	3211462
+Putian	Putian	Fujian	China	CN	25.4526	119.0078	23	3210714
+Zhenjiang	Zhenjiang	Jiangsu	China	CN	32.188	119.424	26	3210418
+Guang’an	Guang'an	Sichuan	China	CN	30.4564	106.6326	244	3205476
+Faisalabad	Faisalabad	Punjab	Pakistan	PK	31.4167	73.0911	186	3203846
+Changzhi	Changzhi	Shanxi	China	CN	36.195	113.117	937	3180884
+Tongren	Tongren	Guizhou	China	CN	27.7316	109.1895	263	3168800
+Leshan	Leshan	Sichuan	China	CN	29.552	103.766	375	3160168
+Santa Cruz de la Sierra	Santa Cruz de la Sierra	Santa Cruz	Bolivia	BO	-17.7892	-63.1975	433	3151676
+Qinhuangdao	Qinhuangdao	Hebei	China	CN	39.8882	119.5202	2	3146300
+Jaipur	Jaipur	Rājasthān	India	IN	26.9	75.8	435	3073350
+Xinzhou	Xinzhou	Shanxi	China	CN	38.416	112.734	794	3067501
+Lanzhou	Lanzhou	Gansu	China	CN	36.0606	103.8268	1521	3067141
+Wuzhou	Wuzhou	Guangxi	China	CN	23.4767	111.279	51	3061100
+Athens	Athens	Attikí	Greece	GR	37.9842	23.7281	70	3059764
+San Diego	San Diego	California	United States	US	32.8313	-117.1222	133	3046560
+Addis Ababa	Addis Ababa	Ādīs Ābeba	Ethiopia	ET	9.03	38.74	2405	3041002
+Taichung	Taichung	Taichung	Taiwan	TW	24.1439	120.6794	91	3033885
+Huainan	Huainan	Anhui	China	CN	32.6314	117.0194	47	3033528
+Guatemala City	Guatemala City	Guatemala	Guatemala	GT	14.6133	-90.5353	1508	3014000
+Kuwait City	Kuwait City	Al ‘Āşimah	Kuwait	KW	29.3697	47.9783	11	3000000
+Budapest	Budapest	Budapest	Hungary	HU	47.4925	19.0514	115	2997958
+Qincheng	Qincheng	Gansu	China	CN	34.5809	105.7311	1153	2984659
+Rizhao	Rizhao	Shandong	China	CN	35.417	119.527	25	2968365
+Quezon City	Quezon City	Quezon	Philippines	PH	14.65	121.0475	49	2960048
+Sanaa	Sanaa	Amānat al ‘Āşimah	Yemen	YE	15.3483	44.2064	2253	2957000
+Tashkent	Tashkent	Toshkent	Uzbekistan	UZ	41.3111	69.2797	460	2956384
+Kyiv	Kyiv	Kyiv, Misto	Ukraine	UA	50.45	30.5233	183	2952301
+Meishan	Meishan	Sichuan	China	CN	30.0771	103.8484	423	2950545
+Incheon	Incheon	Incheon	South Korea	KR	37.4833	126.6333	43	2936117
+Birmingham	Birmingham	Birmingham	United Kingdom	GB	52.48	-1.9025	149	2919600
+Ningde	Ningde	Fujian	China	CN	26.6662	119.5477	20	2910000
+Zhongshan	Zhongshan	Guangdong	China	CN	22.517	113.3925	8	2909633
+Weihai	Weihai	Shandong	China	CN	37.5133	122.1205	14	2906548
+Bursa	Bursa	Bursa	Turkey	TR	40.1833	29.05	155	2901396
+Minneapolis	Minneapolis	Minnesota	United States	US	44.9635	-93.2678	253	2892569
+Mbuji-Mayi	Mbuji-Mayi	Kasaï Oriental	Congo (Kinshasa)	CD	-6.15	23.6	621	2892000
+Haikou	Haikou	Hainan	China	CN	20.0186	110.3488	20	2873358
+Tongliao	Tongliao	Inner Mongolia	China	CN	43.654	122.243	182	2873168
+Chaoyang	Chaoyang	Liaoning	China	CN	41.571	120.453	162	2872857
+La Paz	La Paz	La Paz	Bolivia	BO	-16.4958	-68.1333	3782	2867504
+Pyongyang	Pyongyang	P’yŏngyang	North Korea	KP	39.0167	125.7475	43	2863000
+Tampa	Tampa	Florida	United States	US	27.9945	-82.4447	1	2861173
+Shaoguan	Shaoguan	Guangdong	China	CN	24.811	113.597	69	2855131
+Heyuan	Heyuan	Guangdong	China	CN	23.7443	114.7002	31	2837686
+Brasília	Brasilia	Distrito Federal	Brazil	BR	-15.7939	-47.8828	1061	2817068
+Omdurman	Omdurman	Khartoum	Sudan	SD	15.65	32.4833	391	2805396
+Malang	Malang	Jawa Timur	Indonesia	ID	-7.98	112.62	452	2795209
+Stuttgart	Stuttgart	Baden-Württemberg	Germany	DE	48.7775	9.18	252	2787724
+Daqing	Daqing	Heilongjiang	China	CN	46.589	125.104	147	2781562
+Rome	Rome	Lazio	Italy	IT	41.8933	12.4828	20	2748109
+Brooklyn	Brooklyn	New York	United States	US	40.6501	-73.9496	15	2736074
+Kaohsiung	Kaohsiung	Kaohsiung	Taiwan	TW	22.615	120.2975	9	2733964
+Xiangtan	Xiangtan	Hunan	China	CN	27.8313	112.9454	31	2726181
+Longyan	Longyan	Fujian	China	CN	25.076	117.017	318	2723637
+Baotou	Baotou	Inner Mongolia	China	CN	40.6213	109.9532	1060	2709378
+Handan	Handan	Hebei	China	CN	36.601	114.487	61	2708015
+Jinzhou	Jinzhou	Liaoning	China	CN	41.129	121.148	26	2703853
+Kanpur	Kanpur	Uttar Pradesh	India	IN	26.4499	80.3319	137	2701324
+Denver	Denver	Colorado	United States	US	39.762	-104.8758	1648	2687458
+Nanping	Nanping	Fujian	China	CN	26.6418	118.1774	102	2680645
+Gāzipura	Gazipura	Dhaka	Bangladesh	BD	23.9889	90.375	12	2674697
+Shanwei	Shanwei	Guangdong	China	CN	22.7872	115.3756	9	2672819
+Chaozhou	Chaozhou	Guangdong	China	CN	23.658	116.622	23	2656600
+Guayaquil	Guayaquil	Guayas	Ecuador	EC	-2.19	-79.8875	14	2650288
+Weifang	Weifang	Shandong	China	CN	36.708	119.162	30	2636154
+Huai’an	Huai'an	Jiangsu	China	CN	33.551	119.113	14	2632788
+Zibo	Zibo	Shandong	China	CN	36.8138	118.055	51	2631647
+Ankang	Ankang	Shaanxi	China	CN	32.6854	109.029	273	2629906
+Mogadishu	Mogadishu	Banaadir	Somalia	SO	2.0392	45.3419	12	2610483
+Munich	Munich	Bavaria	Germany	DE	48.1375	11.575	524	2606021
+Gulou	Gulou	Fujian	China	CN	26.0865	119.298	14	2606000
+Taipei	Taipei	Taipei	Taiwan	TW	25.0375	121.5625	5	2603150
+Bekasi	Bekasi	Jawa Barat	Indonesia	ID	-6.2349	106.9923	18	2590257
+Damascus	Damascus	Dimashq	Syria	SY	33.5131	36.2919	701	2584771
+Sanming	Sanming	Fujian	China	CN	26.2634	117.6389	126	2580000
+Yangjiang	Yangjiang	Guangdong	China	CN	21.857	111.983	15	2555600
+Jiamusi	Jiamusi	Heilongjiang	China	CN	46.8	130.319	66	2552097
+Luohe	Luohe	Henan	China	CN	33.583	114.0109	67	2544266
+Medellín	Medellin	Antioquia	Colombia	CO	6.2308	-75.5906	1405	2529403
+Dingxi	Dingxi	Gansu	China	CN	35.608	104.592	1908	2524097
+Shaoxing	Shaoxing	Zhejiang	China	CN	30.0511	120.5833	21	2521964
+Yantai	Yantai	Shandong	China	CN	37.4646	121.4478	22	2511053
+Huizhou	Huizhou	Guangdong	China	CN	23.112	114.416	25	2509243
+Lishui	Lishui	Zhejiang	China	CN	28.468	119.923	72	2507396
+Xuanzhou	Xuanzhou	Anhui	China	CN	30.939	118.759	25	2500063
+Khowrhesht	Khowrhesht	Qazvīn	Iran	IR	36.205	49.6872	1265	2500000
+Mirzāpur	Mirzapur	Uttar Pradesh	India	IN	25.146	82.569	90	2496970
+Zigong	Zigong	Sichuan	China	CN	29.339	104.779	306	2489256
+Hamburg	Hamburg	Hamburg	Germany	DE	53.55	10.0	9	2484800
+Guangyuan	Guangyuan	Sichuan	China	CN	32.436	105.844	525	2484122
+Cali	Cali	Valle del Cauca	Colombia	CO	3.4206	-76.5222	758	2471474
+Huangshi	Huangshi	Hubei	China	CN	30.2011	115.039	22	2469079
+Xining	Xining	Qinghai	China	CN	36.6224	101.7804	2275	2467965
+Lusaka	Lusaka	Lusaka	Zambia	ZM	-15.4167	28.2833	1277	2467563
+Ouagadougou	Ouagadougou	Centre	Burkina Faso	BF	12.3686	-1.5275	299	2453496
+Yaoundé	Yaounde	Centre	Cameroon	CM	3.8667	11.5167	726	2440462
+Zhuhai	Zhuhai	Guangdong	China	CN	22.2716	113.5769	35	2439585
+Huludao	Huludao	Liaoning	China	CN	40.711	120.837	17	2434194
+Baoshan	Baoshan	Yunnan	China	CN	25.112	99.161	1680	2431211
+Mecca	Mecca	Makkah al Mukarramah	Saudi Arabia	SA	21.4225	39.8233	333	2427924
+Vancouver	Vancouver	British Columbia	Canada	CA	49.25	-123.1	75	2426160
+Lianshan	Lianshan	Liaoning	China	CN	40.7523	120.828	17	2426000
+Beirut	Beirut	Beyrouth	Lebanon	LB	33.8983	35.5057	40	2421354
+Salvador	Salvador	Bahia	Brazil	BR	-12.9747	-38.4767	4	2418005
+Bucharest	Bucharest	Bucureşti	Romania	RO	44.4325	26.1039	83	2412530
+Longba	Longba	Gansu	China	CN	33.3702	104.9603	1016	2407272
+Nāgpur	Nagpur	Mahārāshtra	India	IN	21.1497	79.0806	319	2405665
+Queens	Queens	New York	United States	US	40.7498	-73.7976	11	2405464
+Jilin	Jilin	Jilin	China	CN	43.8519	126.5481	188	2396000
+Tieling	Tieling	Liaoning	China	CN	42.2237	123.726	64	2388294
+Accra	Accra	Greater Accra	Ghana	GH	5.55	-0.2	33	2388000
+Yunfu	Yunfu	Guangdong	China	CN	22.9152	112.0445	67	2383350
+Bekasi Kota	Bekasi Kota	Jawa Barat	Indonesia	ID	-6.2333	107.0	18	2381053
+Daegu	Daegu	Daegu	South Korea	KR	35.8717	128.6017	40	2376044
+Ghāziābād	Ghaziabad	Uttar Pradesh	India	IN	28.67	77.42	214	2375820
+Luoyang	Luoyang	Henan	China	CN	34.6197	112.4539	128	2372571
+Brisbane	Brisbane	Queensland	Australia	AU	-27.4678	153.0281	27	2360241
+Anshun	Anshun	Guizhou	China	CN	26.2531	105.9476	1374	2353100
+Riverside	Riverside	California	United States	US	33.9381	-117.3949	252	2332836
+Yingkou	Yingkou	Liaoning	China	CN	40.625	122.219	4	2328582
+Colombo	Colombo	Western	Sri Lanka	LK	6.9344	79.8428	7	2323826
+Yanjiang	Yanjiang	Sichuan	China	CN	30.129	104.627	365	2308631
+Baku	Baku	Bakı	Azerbaijan	AZ	40.3953	49.8822	-23	2300500
+Antananarivo	Antananarivo	Antananarivo	Madagascar	MG	-18.91	47.525	1274	2300000
+Mudanjiang	Mudanjiang	Heilongjiang	China	CN	44.5514	129.6329	254	2290208
+Fukuoka	Fukuoka	Fukuoka	Japan	JP	33.59	130.4017	3	2286000
+Yan’an	Yan'an	Shaanxi	China	CN	36.65	109.494	960	2282581
+Jincheng	Jincheng	Shanxi	China	CN	35.491	112.852	711	2279146
+Nantong	Nantong	Jiangsu	China	CN	31.981	120.894	6	2261382
+Lincang	Lincang	Yunnan	China	CN	23.884	100.089	1483	2257991
+Yuxi	Yuxi	Yunnan	China	CN	24.347	102.527	1638	2249502
+Las Vegas	Las Vegas	Nevada	United States	US	36.2333	-115.2654	721	2248047
+Caracas	Caracas	Distrito Capital	Venezuela	VE	10.4806	-66.9036	887	2245744
+Tangerang	Tangerang	Jawa Barat	Indonesia	ID	-6.1703	106.6403	18	2237006
+Laibin	Laibin	Guangxi	China	CN	23.7501	109.2212	72	2233900
+Konya	Konya	Konya	Turkey	TR	37.8667	32.4833	1030	2232374
+Supaul	Supaul	Bihār	India	IN	26.126	86.605	56	2229076
+Vienna	Vienna	Wien	Austria	AT	48.2083	16.3725	171	2223236
+Gaziantep	Gaziantep		Turkey	TR	37.0594	37.3825	842	2222415
+Eşfahān	Esfahan	Eşfahān	Iran	IR	32.6447	51.6675	1578	2219343
+Baltimore	Baltimore	Maryland	United States	US	39.3051	-76.6144	10	2196524
+Shengli	Shengli	Shandong	China	CN	37.434	118.6746	6	2193518
+Dandong	Dandong	Liaoning	China	CN	40.1167	124.3833	10	2188436
+Lomé	Lome		Togo	TG	6.1287	1.2215	13	2188376
+Qinbaling	Qinbaling	Gansu	China	CN	35.7278	107.64	1427	2179716
+Gaoping	Gaoping	Sichuan	China	CN	30.7824	106.1281	283	2174000
+Awka	Awka	Anambra	Nigeria	NG	6.2069	7.0678	99	2171900
+Taizhou	Taizhou	Zhejiang	China	CN	28.6557	121.4208	15	2162461
+Ma’anshan	Ma'anshan	Anhui	China	CN	31.669	118.507	24	2159930
+Ordos	Ordos		China	CN	39.6086	109.7816	2149	2153638
+Harare	Harare	Harare	Zimbabwe	ZW	-17.8292	31.0522	1494	2150000
+Perth	Perth	Western Australia	Australia	AU	-31.9559	115.8606	34	2141834
+Coimbatore	Coimbatore		India	IN	11.0055	76.9661	411	2136916
+St. Louis	St. Louis	Missouri	United States	US	38.6359	-90.2451	142	2130881
+Phnom Penh	Phnom Penh	Phnom Penh	Cambodia	KH	11.5694	104.9211	20	2129371
+Depok	Depok	Jawa Barat	Indonesia	ID	-6.394	106.8225	92	2123349
+Stockholm	Stockholm	Stockholm	Sweden	SE	59.3294	18.0686	17	2121000
+Puning	Puning	Guangdong	China	CN	23.298	116.166	12	2118200
+Huaibei	Huaibei	Anhui	China	CN	33.956	116.798	51	2114276
+Pretoria	Pretoria		South Africa	ZA	-25.7449	28.1878	1332	2112693
+Kowloon	Kowloon		Hong Kong	HK	22.3167	114.1833	92	2108419
+Córdoba	Cordoba	Córdoba	Argentina	AR	-31.4167	-64.1833	378	2106734
+Haiphong	Haiphong	Hải Phòng	Vietnam	VN	20.8651	106.6838	12	2103500
+Zamboanga City	Zamboanga City	Zamboanga	Philippines	PH	6.9042	122.0761	9	2100000
+Chongzuo	Chongzuo	Guangxi	China	CN	22.377	107.365	128	2099400
+Rawalpindi	Rawalpindi	Punjab	Pakistan	PK	33.6	73.0333	501	2098231
+Portland	Portland	Oregon	United States	US	45.5371	-122.65	12	2095808
+Kano	Kano	Kano	Nigeria	NG	12.0	8.5167	484	2095000
+Yushan	Yushan	Jiangsu	China	CN	31.322	120.985	10	2092496
+Havana	Havana	La Habana	Cuba	CU	23.1367	-82.3589	11	2089532
+Hezhou	Hezhou	Guangxi	China	CN	24.4042	111.5672	106	2072600
+Pingliang	Pingliang	Gansu	China	CN	35.5424	106.6649	1354	2068033
+Vadodara	Vadodara	Gujarāt	India	IN	22.3	73.2	46	2065771
+Manaus	Manaus	Amazonas	Brazil	BR	-3.1189	-60.0217	20	2063547
+Qingyang	Qingyang	Fujian	China	CN	24.7816	118.5517	33	2061600
+San Antonio	San Antonio	Texas	United States	US	29.4632	-98.5238	198	2058444
+Rājkot	Rajkot	Gujarāt	India	IN	22.3	70.7833	140	2043000
+Shangzhou	Shangzhou	Shaanxi	China	CN	33.868	109.9244	702	2041231
+Vishākhapatnam	Vishakhapatnam	Andhra Pradesh	India	IN	17.7042	83.2978	45	2035922
+Sanmenxia	Sanmenxia	Henan	China	CN	34.7732	111.2004	385	2034872
+Baicheng	Baicheng	Jilin	China	CN	45.62	122.838	150	2032356
+Gujranwala	Gujranwala	Punjab	Pakistan	PK	32.1567	74.19	230	2027001
+Aleppo	Aleppo	Ḩalab	Syria	SY	36.2	37.16	401	2003671
+Tijuana	Tijuana	Baja California	Mexico	MX	32.525	-117.0333	97	2002000
+Bamenda	Bamenda	North-West	Cameroon	CM	5.9614	10.1517	1258	2000000
+Minsk	Minsk	Minsk	Belarus	BY	53.9	27.5667	222	1995471
+Indore	Indore	Madhya Pradesh	India	IN	22.7167	75.8472	550	1994397
+Karaj	Karaj	Alborz	Iran	IR	35.8272	50.9489	1341	1973470
+Kananga	Kananga	Kasaï Central	Congo (Kinshasa)	CD	-5.897	22.4488	643	1971704
+Peshawar	Peshawar	Khyber Pakhtunkhwa	Pakistan	PK	34.0144	71.5675	340	1970042
+Sapporo	Sapporo	Hokkaidō	Japan	JP	43.0619	141.3544	26	1959313
+Sacramento	Sacramento	California	United States	US	38.5677	-121.4685	9	1957738
+Tilburg	Tilburg	Noord-Brabant	Netherlands	NL	51.55	5.0833	16	1944588
+Pingxiang	Pingxiang	Jiangxi	China	CN	27.659	113.887	167	1933200
+Ecatepec	Ecatepec	México	Mexico	MX	19.6097	-99.06	2242	1929926
+Almaty	Almaty	Almaty	Kazakhstan	KZ	43.24	76.915	783	1916822
+Austin	Austin	Texas	United States	US	30.3005	-97.7522	183	1905945
+Yinchuan	Yinchuan	Ningxia	China	CN	38.485	106.225	1117	1901793
+Santos	Santos	São Paulo	Brazil	BR	-23.9369	-46.325	12	1897551
+Blantyre	Blantyre	Blantyre	Malawi	MW	-15.7861	35.0058	1041	1895973
+Thāne	Thane	Mahārāshtra	India	IN	19.1972	72.9722	23	1886941
+Orlando	Orlando	Florida	United States	US	28.4773	-81.337	30	1882705
+Tainan	Tainan	Tainan	Taiwan	TW	22.9833	120.1833	16	1874686
+Xiping	Xiping	Shanxi	China	CN	40.082	113.2981	1054	1873000
+Multan	Multan	Punjab	Pakistan	PK	30.1978	71.4697	126	1871843
+Santa Cruz	Santa Cruz	Santa Cruz	Bolivia	BO	-17.8	-63.1833	433	1867673
+Kakamega	Kakamega		Kenya	KE	0.2842	34.7523	1563	1867579
+Port Harcourt	Port Harcourt	Rivers	Nigeria	NG	4.8242	7.0336	16	1865000
+Jixi	Jixi	Heilongjiang	China	CN	45.295	130.969	222	1862165
+Fushun	Fushun	Liaoning	China	CN	41.881	123.957	85	1861372
+Warsaw	Warsaw	Mazowieckie	Poland	PL	52.23	21.0111	113	1860281
+Beihai	Beihai	Guangxi	China	CN	21.481	109.12	10	1853227
+Kaduna	Kaduna		Nigeria	NG	10.5264	7.4388	626	1850000
+Fuxin	Fuxin	Liaoning	China	CN	42.022	121.67	142	1819339
+Wuwei	Wuwei	Gansu	China	CN	37.929	102.638	1542	1815059
+Siping	Siping	Jilin	China	CN	43.1668	124.3506	176	1814733
+San Juan	San Juan	Puerto Rico	Puerto Rico	PR	18.3985	-66.061	47	1814587
+Mersin	Mersin	Mersin	Turkey	TR	36.8	34.6333	10	1814468
+Bhopāl	Bhopal	Madhya Pradesh	India	IN	23.2599	77.4126	523	1798218
+Mosul	Mosul	Nīnawá	Iraq	IQ	36.34	43.13	228	1792000
+Lubumbashi	Lubumbashi	Haut-Katanga	Congo (Kinshasa)	CD	-11.6647	27.4794	1260	1786397
+Davao	Davao	Davao	Philippines	PH	7.07	125.6	13	1776949
+Curitiba	Curitiba	Paraná	Brazil	BR	-25.4297	-49.2711	924	1773733
+San Jose	San Jose	California	United States	US	37.3012	-121.848	26	1771413
+Shuyangzha	Shuyangzha	Jiangsu	China	CN	34.1299	118.7734	19	1770000
+Adana	Adana	Adana	Turkey	TR	37.0	35.3213	30	1765981
+Quito	Quito	Pichincha	Ecuador	EC	-0.22	-78.5125	2854	1763275
+Bayan Nur	Bayan Nur		China	CN	40.7414	107.386	1050	1760000
+Pittsburgh	Pittsburgh	Pennsylvania	United States	US	40.4397	-79.9763	233	1749091
+Brazzaville	Brazzaville	Brazzaville	Congo (Brazzaville)	CG	-4.2694	15.2711	284	1733263
+Hyderabad City	Hyderabad City	Sindh	Pakistan	PK	25.3792	68.3683	14	1732693
+Diyarbakır	Diyarbakir	Diyarbakır	Turkey	TR	37.91	40.24	674	1732396
+Indianapolis	Indianapolis	Indiana	United States	US	39.7771	-86.1458	218	1729849
+Pimpri-Chinchwad	Pimpri-Chinchwad	Mahārāshtra	India	IN	18.6186	73.8037	568	1727692
+Masqaţ	Masqat	Masqaţ	Oman	OM	23.5889	58.4083	14	1720000
+Montevideo	Montevideo	Montevideo	Uruguay	UY	-34.8836	-56.1819	34	1719453
+Shuozhou	Shuozhou	Shanxi	China	CN	39.3317	112.4329	1098	1714857
+Manhattan	Manhattan	New York	United States	US	40.7834	-73.9662	35	1694263
+Cincinnati	Cincinnati	Ohio	United States	US	39.1413	-84.506	191	1692702
+Kansas City	Kansas City	Missouri	United States	US	39.1238	-94.5541	274	1689556
+Patna	Patna	Bihār	India	IN	25.594	85.1376	53	1684222
+Tegucigalpa	Tegucigalpa	Francisco Morazán	Honduras	HN	14.1058	-87.2047	944	1682725
+Kallakurichi	Kallakurichi		India	IN	11.7338	78.9592	124	1682687
+Kampala	Kampala	Kampala	Uganda	UG	0.3136	32.5811	1223	1680600
+Cleveland	Cleveland	Ohio	United States	US	41.4764	-81.6805	199	1680247
+Sanzhou	Sanzhou	Chongqing	China	CN	30.82	108.4	410	1680000
+Changshu	Changshu	Jiangsu	China	CN	31.656	120.753	9	1677050
+Heihe	Heihe	Heilongjiang	China	CN	50.2401	127.521	139	1673899
+Conakry	Conakry	Conakry	Guinea	GN	9.5092	-13.7122	6	1667864
+Ximeicun	Ximeicun	Fujian	China	CN	24.9612	118.3849	10	1663542
+Caloocan City	Caloocan City	Caloocan	Philippines	PH	14.65	120.97	6	1661584
+Rabat	Rabat		Morocco	MA	34.0132	-6.8326	46	1655753
+Masvingo	Masvingo	Masvingo	Zimbabwe	ZW	-20.0744	30.8328	1091	1638528
+Zhongli	Zhongli	Taoyuan	Taiwan	TW	24.965	121.2168	132	1632616
+Novosibirsk	Novosibirsk	Novosibirskaya Oblast’	Russia	RU	55.05	82.95	113	1625631
+Bilāspur	Bilaspur	Chhattīsgarh	India	IN	22.09	82.15	265	1625502
+Semarang	Semarang	Jawa Tengah	Indonesia	ID	-6.99	110.4225	18	1621384
+Jingdezhen	Jingdezhen	Jiangxi	China	CN	29.2917	117.1986	48	1618979
+Ludhiāna	Ludhiana	Punjab	India	IN	30.91	75.85	256	1618879
+Erbil	Erbil		Iraq	IQ	36.1912	44.0094	429	1612700
+Liaoyang	Liaoyang	Liaoning	China	CN	41.279	123.176	33	1604580
+Chengtangcun	Chengtangcun	Shandong	China	CN	35.0833	117.15	83	1603659
+Rājshāhi	Rajshahi	Rājshāhi	Bangladesh	BD	24.3667	88.6	23	1600000
+Balandougou	Balandougou	Kayes	Mali	ML	13.3558	-9.5517	350	1596882
+Jiangyin	Jiangyin	Jiangsu	China	CN	31.839	120.295	7	1595138
+Valencia	Valencia	Valencia	Spain	ES	39.47	-0.3764	15	1595000
+Santiago de Querétaro	Santiago de Queretaro		Mexico	MX	20.5881	-100.3881	1826	1594212
+Āgra	Agra	Uttar Pradesh	India	IN	27.18	78.02	166	1585704
+León de los Aldama	Leon de los Aldama	Guanajuato	Mexico	MX	21.1167	-101.6833	1803	1579803
+Puebla	Puebla	Puebla	Mexico	MX	19.0333	-98.1833	2166	1576259
+Columbus	Columbus	Ohio	United States	US	39.9862	-82.9855	235	1572546
+Yopougon	Yopougon	Abidjan	Côte d’Ivoire	CI	5.3167	-4.0667	6	1571065
+Hebi	Hebi	Henan	China	CN	35.748	114.297	84	1569208
+Shīrāz	Shiraz	Fārs	Iran	IR	29.61	52.5425	1545	1565572
+Madurai	Madurai	Tamil Nādu	India	IN	9.9252	78.1198	139	1561129
+Huzhou	Huzhou	Zhejiang	China	CN	30.8925	120.0875	6	1558826
+Tabrīz	Tabriz	Āz̄arbāyjān-e Sharqī	Iran	IR	38.0814	46.3006	1396	1558693
+Jamshedpur	Jamshedpur	Jhārkhand	India	IN	22.7925	86.1842	171	1558000
+Maracaibo	Maracaibo	Zulia	Venezuela	VE	10.6333	-71.6333	10	1551539
+Sofia	Sofia	Sofia-Grad	Bulgaria	BG	42.7	23.33	562	1547779
+San José	San Jose	San José	Costa Rica	CR	9.9325	-84.08	1133	1543000
+Prayagraj	Prayagraj	Uttar Pradesh	India	IN	25.4358	81.8464	99	1536218
+Palembang	Palembang	Sumatera Selatan	Indonesia	ID	-2.9861	104.7556	5	1535952
+Kawasaki	Kawasaki	Kanagawa	Japan	JP	35.5167	139.7	1	1531646
+Kōbe	Kobe	Hyōgo	Japan	JP	34.69	135.1956	35	1521707
+Jiaxing	Jiaxing	Zhejiang	China	CN	30.747	120.756	8	1518654
+Kigali	Kigali	Kigali	Rwanda	RW	-1.9439	30.0594	1542	1518632
+Zhangjiajie	Zhangjiajie	Hunan	China	CN	29.117	110.479	174	1517027
+Baiyin	Baiyin	Gansu	China	CN	36.5451	104.1389	1723	1512110
+Guiping	Guiping	Guangxi	China	CN	23.4	110.0833	50	1511011
+Lianjiang	Lianjiang	Guangdong	China	CN	21.7333	110.2833	46	1509400
+Jianguang	Jianguang	Jiangxi	China	CN	28.1958	115.7833	31	1507402
+Yucheng	Yucheng	Sichuan	China	CN	30.01	103.0415	591	1507258
+Xushan	Xushan	Zhejiang	China	CN	30.1667	121.2333	11	1502000
+Panama City	Panama City	Panamá	Panama	PA	8.9833	-79.5167	17	1500189
+Nneyi-Umuleri	Nneyi-Umuleri	Anambra	Nigeria	NG	6.3333	6.8333	46	1500000
+Leizhou	Leizhou	Guangdong	China	CN	20.9143	110.0967	16	1494700
+Gwangju	Gwangju	Gwangju	South Korea	KR	35.1653	126.8486	18	1490092
+Katako-Kombe	Katako-Kombe	Sankuru	Congo (Kinshasa)	CD	-3.4	24.42	10	1488922
+Recife	Recife	Pernambuco	Brazil	BR	-8.05	-34.9	8	1488920
+Nāsik	Nasik	Mahārāshtra	India	IN	19.9975	73.7898	584	1486053
+Valencia	Valencia	Carabobo	Venezuela	VE	10.1833	-68.0	547	1484430
+Abu Dhabi	Abu Dhabi	Abū Z̧aby	United Arab Emirates	AE	24.4667	54.3667	6	1483000
+Onitsha	Onitsha	Anambra	Nigeria	NG	6.1667	6.7833	57	1483000
+Asunción	Asuncion		Paraguay	PY	-25.2865	-57.647	113	1482200
+Zapopan	Zapopan	Jalisco	Mexico	MX	20.7167	-103.4	1565	1476491
+Daejeon	Daejeon	Daejeon	South Korea	KR	36.35	127.385	42	1475221
+Bronx	Bronx	New York	United States	US	40.8501	-73.8662	23	1472654
+Yekaterinburg	Yekaterinburg	Sverdlovskaya Oblast’	Russia	RU	56.8356	60.6128	278	1468833
+Huazhou	Huazhou	Henan	China	CN	32.688	112.087	114	1468061
+Jinhua	Jinhua	Zhejiang	China	CN	29.079	119.647	55	1463990
+Kyōto	Kyoto	Kyōto	Japan	JP	35.0117	135.7683	50	1463723
+Amsterdam	Amsterdam	Noord-Holland	Netherlands	NL	52.3728	4.8936	13	1459402
+Pizhou	Pizhou	Jiangsu	China	CN	34.398	117.89	24	1458038
+Kismaayo	Kismaayo	Jubbada Hoose	Somalia	SO	-0.3581	42.5453	11	1458000
+Yangshe	Yangshe	Jiangsu	China	CN	31.8767	120.556	13	1447600
+Virginia Beach	Virginia Beach	Virginia	United States	US	36.7335	-76.0435	3	1443020
+Kathmandu	Kathmandu		Nepal	NP	27.7017	85.3206	1317	1442271
+Dakar	Dakar	Dakar	Senegal	SN	14.6928	-17.4467	12	1438725
+Goiânia	Goiania	Goiás	Brazil	BR	-16.6667	-49.25	766	1437237
+Tirunelveli	Tirunelveli		India	IN	8.7274	77.6838	49	1435844
+Charlotte	Charlotte	North Carolina	United States	US	35.2083	-80.8303	229	1427444
+Rui’an	Rui'an	Zhejiang	China	CN	27.7833	120.625	4	1424667
+Muscat	Muscat	Masqaţ	Oman	OM	23.6139	58.5922	14	1421409
+Kharkiv	Kharkiv	Kharkivska Oblast	Ukraine	UA	49.9925	36.2311	94	1421125
+Wenling	Wenling	Zhejiang	China	CN	28.3667	121.3667	1	1416199
+Gaozhou	Gaozhou	Guangdong	China	CN	21.9244	110.8422	28	1414100
+Farīdābād	Faridabad	Haryāna	India	IN	28.4211	77.3078	209	1414050
+Medina	Medina	Al Madīnah al Munawwarah	Saudi Arabia	SA	24.47	39.61	603	1411599
+Khulna	Khulna	Khulna	Bangladesh	BD	22.8167	89.55	8	1400689
+Ulaanbaatar	Ulaanbaatar	Ulaanbaatar	Mongolia	MN	47.9203	106.9172	1284	1396288
+Fuqing	Fuqing	Fujian	China	CN	25.7167	119.3833	17	1390487
+Kayseri	Kayseri	Kayseri	Turkey	TR	38.7225	35.4875	1054	1389680
+Tel Aviv-Yafo	Tel Aviv-Yafo	Tel Aviv	Israel	IL	32.08	34.78	15	1388400
+Wuzhong	Wuzhong	Ningxia	China	CN	37.9978	106.1986	1133	1382713
+Huế	Hue		Vietnam	VN	16.4619	107.5955	8	1380000
+Pingdu	Pingdu	Shandong	China	CN	36.7769	119.9884	59	1378900
+Sangereng	Sangereng	Jawa Barat	Indonesia	ID	-6.2889	106.7181	39	1378466
+Yangquan	Yangquan	Shanxi	China	CN	37.8571	113.5804	722	1368502
+Samsun	Samsun	Samsun	Turkey	TR	41.2903	36.3336	64	1368488
+Yutan	Yutan	Hunan	China	CN	28.278	112.552	53	1368117
+Copenhagen	Copenhagen	Hovedstaden	Denmark	DK	55.6761	12.5683	14	1366301
+Helsinki	Helsinki	Uusimaa	Finland	FI	60.1708	24.9375	26	1360075
+Bannu	Bannu		Pakistan	PK	32.9853	70.604	379	1357890
+Prague	Prague	Praha	Czech Republic	CZ	50.0875	14.4214	202	1357326
+Milan	Milan	Lombardy	Italy	IT	45.4669	9.19	122	1354196
+Auckland	Auckland	Auckland	New Zealand	NZ	-36.8406	174.74	43	1346091
+Santiago	Santiago	Cibao Norte	Dominican Republic	DO	19.4572	-70.6889	209	1343423
+Chizhou	Chizhou	Anhui	China	CN	30.6654	117.4916	21	1342764
+Makassar	Makassar	Sulawesi Selatan	Indonesia	ID	-5.1619	119.4362	6	1338663
+Liangshi	Liangshi	Hunan	China	CN	27.26	111.7442	243	1335900
+Antalya	Antalya		Turkey	TR	36.9081	30.6956	61	1335002
+Porto Alegre	Porto Alegre	Rio Grande do Sul	Brazil	BR	-30.0331	-51.23	46	1332570
+Huangshan	Huangshan	Anhui	China	CN	29.7149	118.3376	134	1330565
+Barranquilla	Barranquilla	Atlántico	Colombia	CO	10.9833	-74.8019	24	1326588
+Al Başrah	Al Basrah	Al Başrah	Iraq	IQ	30.515	47.81	4	1326564
+Benxi	Benxi	Liaoning	China	CN	41.4868	123.685	212	1326018
+Saitama	Saitama	Saitama	Japan	JP	35.8614	139.6456	14	1325843
+Guarulhos	Guarulhos	São Paulo	Brazil	BR	-23.4628	-46.5328	774	1324781
+Juárez	Juarez	Chihuahua	Mexico	MX	31.745	-106.485	1124	1321004
+Mandalay	Mandalay	Mandalay	Burma	MM	21.9831	96.0844	83	1319452
+Xintai	Xintai	Shandong	China	CN	35.909	117.768	197	1315942
+Wusong	Wusong	Anhui	China	CN	30.9333	117.7667	7	1311726
+Calgary	Calgary	Alberta	Canada	CA	51.05	-114.0667	1053	1306784
+Meerut	Meerut	Uttar Pradesh	India	IN	28.98	77.71	228	1305429
+Yushu	Yushu	Jilin	China	CN	44.826	126.55	196	1304436
+Belém	Belem	Pará	Brazil	BR	-1.4558	-48.5039	15	1303389
+Kuaidamao	Kuaidamao	Jilin	China	CN	41.7283	125.9397	375	1302778
+Huazhou	Huazhou	Guangdong	China	CN	21.664	110.6396	27	1302100
+Baishan	Baishan	Jilin	China	CN	41.944	126.4147	471	1296127
+Adelaide	Adelaide	South Australia	Australia	AU	-34.9275	138.6	59	1295714
+Haicheng	Haicheng	Liaoning	China	CN	40.8824	122.6852	33	1293877
+Milwaukee	Milwaukee	Wisconsin	United States	US	43.0642	-87.9675	203	1290940
+Providence	Providence	Rhode Island	United States	US	41.823	-71.4187	2	1290271
+Jacksonville	Jacksonville	Florida	United States	US	30.3322	-81.6749	5	1288298
+Yicheng	Yicheng	Jiangsu	China	CN	31.36	119.815	8	1285785
+Cacuaco	Cacuaco	Luanda	Angola	AO	-8.8053	13.2444	32	1279488
+Porto	Porto	Porto	Portugal	PT	41.1621	-8.622	91	1278210
+Rosario	Rosario	Santa Fe	Argentina	AR	-32.9575	-60.6394	38	1276000
+Budta	Budta		Philippines	PH	7.2042	124.4397	4	1273715
+Canagatan	Canagatan	Cagayan	Philippines	PH	18.0	121.8	28	1273219
+Soweto	Soweto	Gauteng	South Africa	ZA	-26.2678	27.8585	1632	1271628
+Bagam	Bagam	Kepulauan Riau	Indonesia	ID	1.13	104.0531	38	1269820
+Jabalpur	Jabalpur	Madhya Pradesh	India	IN	23.1667	79.9333	416	1267564
+Rucheng	Rucheng	Jiangsu	China	CN	32.246	120.591	6	1267066
+Huaiyin	Huaiyin	Jiangsu	China	CN	33.5819	119.028	14	1264000
+Dublin	Dublin	Dublin	Ireland	IE	53.35	-6.2603	17	1263219
+Kazan	Kazan	Tatarstan	Russia	RU	55.7964	49.1089	61	1259173
+Jepara	Jepara		Indonesia	ID	-6.5924	110.671	5	1257912
+Dayan	Dayan	Yunnan	China	CN	26.8552	100.2259	2397	1253878
+Shaoyang	Shaoyang	Jiangsu	China	CN	32.912	119.8526	8	1253548
+Dammam	Dammam		Saudi Arabia	SA	26.4344	50.1033	10	1252523
+Balıkesir	Balikesir	Balıkesir	Turkey	TR	39.6333	27.8833	139	1250610
+Comayagüela	Comayaguela	Francisco Morazán	Honduras	HN	14.098	-87.21	944	1250000
+Laiwu	Laiwu	Shandong	China	CN	36.1833	117.6667	182	1248636
+Sharjah	Sharjah	Ash Shāriqah	United Arab Emirates	AE	25.3575	55.3908	15	1247749
+Jingling	Jingling	Hubei	China	CN	30.664	113.167	30	1247400
+Kalyān	Kalyan	Mahārāshtra	India	IN	19.2502	73.1602	24	1246381
+Nizhniy Novgorod	Nizhniy Novgorod	Nizhegorodskaya Oblast’	Russia	RU	56.3269	44.0075	141	1244254
+Yongcheng	Yongcheng	Henan	China	CN	33.9299	116.45	34	1240382
+Sumedang	Sumedang	Jawa Barat	Indonesia	ID	-6.84	107.9208	467	1240000
+Cần Thơ	Can Tho	Cần Thơ	Vietnam	VN	10.0333	105.7833	3	1237300
+Brussels	Brussels	Brussels-Capital Region	Belgium	BE	50.8467	4.3525	28	1235192
+Port-au-Prince	Port-au-Prince		Haiti	HT	18.5435	-72.3388	27	1234742
+Suwon	Suwon	Gyeonggi	South Korea	KR	37.2667	127.0167	48	1234300
+Yiwu	Yiwu	Zhejiang	China	CN	29.3069	120.0753	84	1234015
+Beidao	Beidao	Gansu	China	CN	34.602	105.918	1087	1225000
+Vasai-Virar	Vasai-Virar	Mahārāshtra	India	IN	19.3607	72.7956	7	1221233
+Xiangshui	Xiangshui	Guizhou	China	CN	26.5964	104.8314	1799	1221000
+Nowrangapur	Nowrangapur		India	IN	19.2311	82.5483	578	1220946
+Karbala	Karbala		Iraq	IQ	32.616	44.0249	32	1218732
+Dadukou	Dadukou	Sichuan	China	CN	26.5824	101.7184	1101	1214121
+Campinas	Campinas	São Paulo	Brazil	BR	-22.9058	-47.0608	686	1213792
+Lingcheng	Lingcheng	Guangxi	China	CN	22.7	110.35	102	1211637
+Shuangyashan	Shuangyashan	Heilongjiang	China	CN	46.6762	131.1416	153	1208803
+Mombasa	Mombasa	Mombasa	Kenya	KE	-4.05	39.6667	20	1208333
+Najafgarh	Najafgarh	Delhi	India	IN	28.6092	76.9798	215	1203180
+Xinyu	Xinyu	Jiangxi	China	CN	27.8186	114.9167	68	1202499
+Qom	Qom	Qom	Iran	IR	34.64	50.8764	935	1201158
+Mérida	Merida		Mexico	MX	20.967	-89.6232	10	1201000
+Baidoa	Baidoa	Bay	Somalia	SO	3.1167	43.65	441	1200000
+Hargeysa	Hargeysa	Woqooyi Galbeed	Somalia	SO	9.5631	44.0675	1261	1200000
+Zhangye	Zhangye	Gansu	China	CN	38.9248	100.4499	1481	1199515
+Vārānasi	Varanasi	Uttar Pradesh	India	IN	25.3189	83.0128	86	1198491
+Hiroshima	Hiroshima	Hiroshima	Japan	JP	34.3914	132.4519	16	1198021
+Chiang Mai	Chiang Mai	Chiang Mai	Thailand	TH	18.7953	98.9986	313	1198000
+Belgrade	Belgrade	Beograd	Serbia	RS	44.82	20.46	120	1197714
+Maiduguri	Maiduguri	Borno	Nigeria	NG	11.8333	13.15	325	1197497
+Chelyabinsk	Chelyabinsk	Chelyabinskaya Oblast’	Russia	RU	55.1547	61.3758	232	1196680
+Batam Centre	Batam Centre	Kepulauan Riau	Indonesia	ID	1.13	104.0531	38	1196396
+Rongcheng	Rongcheng	Yunnan	China	CN	26.218	104.103	10	1189813
+Mbandaka	Mbandaka	Équateur	Congo (Kinshasa)	CD	0.0478	18.2558	315	1187837
+Doha	Doha	Ad Dawḩah	Qatar	QA	25.2867	51.5333	11	1186023
+Ahvāz	Ahvaz	Khūzestān	Iran	IR	31.3047	48.6783	23	1184788
+Shymkent	Shymkent	Shymkent	Kazakhstan	KZ	42.3167	69.5958	520	1184113
+Tripoli	Tripoli	Ţarābulus	Libya	LY	32.8872	13.1914	15	1183000
+Srīnagar	Srinagar	Jammu and Kashmīr	India	IN	34.09	74.79	1589	1180570
+Nashville	Nashville	Tennessee	United States	US	36.1715	-86.7842	170	1177657
+Liaoyuan	Liaoyuan	Jilin	China	CN	42.888	125.1447	259	1176239
+Aurangābād	Aurangabad	Mahārāshtra	India	IN	19.88	75.32	588	1175116
+Cilacap	Cilacap	Jawa Tengah	Indonesia	ID	-7.7167	109.017	10	1174964
+Salt Lake City	Salt Lake City	Utah	United States	US	40.7776	-111.9311	1299	1173879
+Omsk	Omsk	Omskaya Oblast’	Russia	RU	54.9833	73.3667	90	1172070
+Pikine	Pikine	Dakar	Senegal	SN	14.75	-17.4	17	1170791
+Samara	Samara	Samarskaya Oblast’	Russia	RU	53.2028	50.1408	107	1169719
+Guankou	Guankou	Hunan	China	CN	28.1637	113.6433	79	1168056
+Pekanbaru	Pekanbaru		Indonesia	ID	0.5167	101.4417	19	1167599
+Bandar Lampung	Bandar Lampung	Lampung	Indonesia	ID	-5.45	105.2667	95	1166761
+Panjin	Panjin		China	CN	41.121	122.0739	7	1166481
+Raleigh	Raleigh	North Carolina	United States	US	35.8324	-78.6429	122	1163152
+Lianyuan	Lianyuan	Hunan	China	CN	27.692	111.664	151	1162928
+Rongcheng	Rongcheng	Hubei	China	CN	29.8402	112.9048	28	1162770
+Dhanbād	Dhanbad	Jhārkhand	India	IN	23.7998	86.4305	247	1162472
+Nay Pyi Taw	Nay Pyi Taw	Nay Pyi Taw	Burma	MM	19.7475	96.115	122	1160242
+Aba	Aba	Abia	Nigeria	NG	5.1167	7.3667	64	1160000
+Kaiyuan	Kaiyuan	Henan	China	CN	36.0193	113.86	10	1160000
+Zhuji	Zhuji	Zhejiang	China	CN	29.7167	120.2333	23	1157938
+Yingtan	Yingtan	Jiangxi	China	CN	28.2721	117.0395	34	1154223
+Edmonton	Edmonton	Alberta	Canada	CA	53.5344	-113.4903	668	1151635
+Leiyang	Leiyang	Hunan	China	CN	26.4223	112.8598	69	1151554
+Ulsan	Ulsan	Ulsan	South Korea	KR	35.55	129.3167	15	1150116
+Yichun	Yichun	Heilongjiang	China	CN	47.728	128.841	225	1148126
+Benin City	Benin City	Edo	Nigeria	NG	6.3333	5.6222	88	1147188
+Bujumbura	Bujumbura	Bujumbura Mairie	Burundi	BI	-3.3833	29.3667	807	1143202
+Guyuan	Guyuan	Ningxia	China	CN	36.01	106.257	1740	1142142
+Xiantao	Xiantao	Hubei	China	CN	30.328	113.443	31	1140100
+Rostov	Rostov	Rostovskaya Oblast’	Russia	RU	47.2225	39.71	54	1137704
+Maputo	Maputo	Maputo	Mozambique	MZ	-25.9667	32.5833	70	1133200
+Bukavu	Bukavu	Sud-Kivu	Congo (Kinshasa)	CD	-2.5	28.8667	1631	1133000
+Amritsar	Amritsar	Punjab	India	IN	31.64	74.86	244	1132383
+Shagamu	Shagamu	Ogun	Nigeria	NG	6.8333	3.65	53	1132270
+Yingchuan	Yingchuan	Henan	China	CN	34.1511	113.4733	123	1131896
+Alīgarh	Aligarh	Uttar Pradesh	India	IN	27.88	78.08	189	1131160
+Santo Domingo	Santo Domingo	Ozama	Dominican Republic	DO	18.4667	-69.95	50	1128678
+Bogor	Bogor	Jawa Barat	Indonesia	ID	-6.5966	106.7972	245	1127408
+Bishkek	Bishkek	Bishkek	Kyrgyzstan	KG	42.8747	74.6122	767	1120827
+Touba	Touba		Senegal	SN	14.8623	-15.8753	47	1120824
+Tbilisi	Tbilisi	Tbilisi	Georgia	GE	41.7225	44.7925	433	1118035
+Guwāhāti	Guwahati	Assam	India	IN	26.1722	91.7458	59	1116267
+Lilongwe	Lilongwe		Malawi	MW	-13.9669	33.7873	1056	1115815
+Ufa	Ufa	Bashkortostan	Russia	RU	54.7261	55.9475	158	1115560
+Fès	Fes	Fès-Meknès	Morocco	MA	34.0433	-5.0033	406	1112072
+Mwanza	Mwanza	Mwanza	Tanzania	TZ	-2.5167	32.9	1144	1104521
+Biên Hòa	Bien Hoa	Đồng Nai	Vietnam	VN	10.95	106.8167	6	1104000
+Mexicali	Mexicali	Baja California	Mexico	MX	32.6633	-115.4678	4	1102342
+Sevilla	Sevilla	Andalusia	Spain	ES	37.39	-5.99	16	1100000
+Ikare	Ikare	Ondo	Nigeria	NG	7.5167	5.75	423	1099931
+Dongtai	Dongtai	Jiangsu	China	CN	32.795	120.519	7	1098100
+Dingzhou	Dingzhou	Hebei	China	CN	38.516	114.99	54	1095986
+Xibeijie	Xibeijie	Gansu	China	CN	39.7334	98.4943	1464	1095947
+Tamale	Tamale	Northern	Ghana	GH	9.4075	-0.8533	196	1095808
+Yuyao	Yuyao	Zhejiang	China	CN	30.05	121.15	59	1095000
+Hanchuan	Hanchuan	Hubei	China	CN	30.652	113.8274	25	1092700
+Gongzhuling	Gongzhuling	Jilin	China	CN	43.5053	124.8224	211	1092692
+N’Djamena	N'Djamena	N’Djamena	Chad	TD	12.11	15.05	299	1092066
+Ubungo	Ubungo	Dar es Salaam	Tanzania	TZ	-6.7889	39.2056	21	1086912
+Cologne	Cologne	North Rhine-Westphalia	Germany	DE	50.9364	6.9528	58	1084831
+Krasnoyarsk	Krasnoyarsk	Krasnoyarskiy Kray	Russia	RU	56.0089	92.8719	182	1083865
+Zhufeng	Zhufeng	Shandong	China	CN	36.0	119.4167	67	1081960
+Ilorin	Ilorin		Nigeria	NG	8.4966	4.5421	320	1080000
+Aden	Aden		Yemen	YE	12.7796	45.0385	7	1079670
+Ezhou	Ezhou	Hubei	China	CN	30.3914	114.8949	29	1079353
+Astana	Astana	Nur-Sultan	Kazakhstan	KZ	51.1472	71.4222	358	1078362
+Nezahualcóyotl	Nezahualcoyotl	México	Mexico	MX	19.4081	-99.0186	2235	1077208
+Nouakchott	Nouakchott	Nouakchott Ouest	Mauritania	MR	18.0858	-15.9785	10	1077169
+Hāora	Haora	West Bengal	India	IN	22.58	88.3294	8	1077075
+Tongjin	Tongjin	Gyeonggi	South Korea	KR	37.2333	127.2	22	1076369
+Xiashi	Xiashi	Zhejiang	China	CN	30.5333	120.6833	7	1076199
+Yerevan	Yerevan	Yerevan	Armenia	AM	40.1814	44.5144	997	1075800
+Rānchi	Ranchi	Jhārkhand	India	IN	23.36	85.33	643	1073440
+Richmond	Richmond	Virginia	United States	US	37.5295	-77.4756	64	1073223
+Ciudad Nezahualcóyotl	Ciudad Nezahualcoyotl	México	Mexico	MX	19.4006	-99.0148	2235	1072676
+Gwalior	Gwalior	Madhya Pradesh	India	IN	26.2124	78.1772	220	1069276
+Ottawa	Ottawa	Ontario	Canada	CA	45.4247	-75.695	78	1068821
+Trujillo	Trujillo		Peru	PE	-8.116	-79.03	31	1067700
+Zhongwei	Zhongwei	Ningxia	China	CN	37.5002	105.1968	1227	1067336
+Oslo	Oslo	Oslo	Norway	NO	59.9133	10.7389	26	1064235
+Goyang	Goyang	Gyeonggi	South Korea	KR	37.65	126.8	19	1061929
+Sendai	Sendai	Miyagi	Japan	JP	38.2682	140.8694	53	1061177
+Mizhou	Mizhou	Shandong	China	CN	35.99	119.3801	64	1060000
+Xishan	Xishan	Hunan	China	CN	27.6461	113.497	69	1060000
+Barquisimeto	Barquisimeto	Lara	Venezuela	VE	10.0636	-69.3347	606	1059092
+Hegang	Hegang	Heilongjiang	China	CN	47.3501	130.298	190	1058665
+Chandīgarh	Chandigarh	Chandīgarh	India	IN	30.75	76.78	351	1055450
+Jingzhou	Jingzhou		China	CN	30.3503	112.1903	39	1052282
+Voronezh	Voronezh	Voronezhskaya Oblast’	Russia	RU	51.6717	39.2106	148	1051995
+Managua	Managua	Managua	Nicaragua	NI	12.1364	-86.2514	108	1051236
+Gqeberha	Gqeberha		South Africa	ZA	-33.9611	25.6149	61	1050078
+Haldwāni	Haldwani	Uttarākhand	India	IN	29.22	79.52	447	1050000
+Vijayavāda	Vijayawada	Andhra Pradesh	India	IN	16.5193	80.6305	47	1048240
+Perm	Perm	Permskiy Kray	Russia	RU	58.0	56.3167	149	1048005
+Fangchenggang	Fangchenggang	Guangxi	China	CN	21.6867	108.3547	13	1046068
+Jiancheng	Jiancheng	Sichuan	China	CN	30.3931	104.5465	365	1045900
+Cazenga	Cazenga	Luanda	Angola	AO	-8.8214	13.2911	19	1045722
+Jos	Jos		Nigeria	NG	9.9285	8.8921	1186	1040000
+Kisangani	Kisangani	Tshopo	Congo (Kinshasa)	CD	0.5167	25.2	400	1040000
+Sokoto	Sokoto		Nigeria	NG	13.0627	5.2432	296	1040000
+Shouguang	Shouguang	Shandong	China	CN	36.857	118.791	38	1039205
+Memphis	Memphis	Tennessee	United States	US	35.1087	-89.9663	78	1037998
+São Luís	Sao Luis	Maranhão	Brazil	BR	-2.5283	-44.3044	29	1037775
+Tangier	Tangier		Morocco	MA	35.7673	-5.7998	20	1035141
+Jodhpur	Jodhpur	Rājasthān	India	IN	26.28	73.02	237	1033918
+Matola	Matola	Maputo	Mozambique	MZ	-25.9667	32.4667	42	1032197
+Ogbomoso	Ogbomoso	Oyo	Nigeria	NG	8.1333	4.25	361	1032000
+Pointe-Noire	Pointe-Noire		Republic of the Congo	CG	-4.7761	11.8635	12	1032000
+Maceió	Maceio		Brazil	BR	-9.6658	-35.7353	11	1031597
+Sanya	Sanya	Hainan	China	CN	18.2533	109.5036	1	1031396
+Rangapukur	Rangapukur	Rangpur	Bangladesh	BD	25.56	89.25	36	1031388
+Kirkuk	Kirkuk		Iraq	IQ	35.4681	44.3922	346	1031000
+Ashgabat	Ashgabat	Aşgabat	Turkmenistan	TM	37.9375	58.38	219	1030063
+Wutong	Wutong	Zhejiang	China	CN	30.6333	120.5333	8	1029754
+Linhai	Linhai	Zhejiang	China	CN	28.85	121.1167	15	1028813
+Denizli	Denizli	Denizli	Turkey	TR	37.7833	29.0964	405	1027782
+Niamey	Niamey	Niamey	Niger	NE	13.515	2.1175	206	1026848
+Shubrā al Khaymah	Shubra al Khaymah	Al Qalyūbīyah	Egypt	EG	30.1286	31.2422	26	1025569
+Wafangdian	Wafangdian	Liaoning	China	CN	39.6271	121.9796	103	1024876
+Tiruchirappalli	Tiruchirappalli		India	IN	10.8155	78.6965	79	1022518
+Zhongxiang	Zhongxiang	Hubei	China	CN	31.169	112.5853	50	1022514
+Monrovia	Monrovia	Montserrado	Liberia	LR	6.3133	-10.8014	32	1021762
+San Cristóbal	San Cristobal	Táchira	Venezuela	VE	7.7667	-72.2333	692	1015623
+Islamabad	Islamabad	Islamabad	Pakistan	PK	33.6931	73.0639	579	1014825
+Xinyi	Xinyi	Guangdong	China	CN	22.3549	110.9468	96	1013900
+Thủ Đức	Thu Duc	Hồ Chí Minh	Vietnam	VN	10.8266	106.7609	29	1013795
+Morelia	Morelia	Michoacán	Mexico	MX	19.7683	-101.1894	1917	1011704
+Odesa	Odesa	Odeska Oblast	Ukraine	UA	46.4775	30.7326	50	1010537
+Raipur	Raipur	Chhattīsgarh	India	IN	21.2444	81.6306	296	1010087
+Changwon	Changwon	Gyeongnam	South Korea	KR	35.2708	128.6631	27	1009998
+Arequipa	Arequipa	Arequipa	Peru	PE	-16.4	-71.5333	2397	1008290
+Fort Worth	Fort Worth		United States	US	32.7254	-97.3208	199	1008106
+Yishui	Yishui		China	CN	35.7847	118.6281	156	1007100
+Volgograd	Volgograd	Volgogradskaya Oblast’	Russia	RU	48.7086	44.5147	42	1004763
+Zaoyang	Zaoyang	Hubei	China	CN	32.129	112.772	113	1004741
+Xingyi	Xingyi	Guizhou	China	CN	25.092	104.8955	1192	1004132
+Shuizhai	Shuizhai	Henan	China	CN	33.4433	114.8994	40	1003698
+Kota	Kota	Rājasthān	India	IN	25.18	75.83	267	1001694
+Quetta	Quetta	Balochistan	Pakistan	PK	30.1833	67.0	1683	1001205
+Bareilly	Bareilly	Uttar Pradesh	India	IN	28.364	79.415	178	1000000
+Domaa-Ahenkro	Domaa-Ahenkro	Bono	Ghana	GH	7.2833	-2.8833	276	1000000
+Quảng Hà	Quang Ha	Quảng Nam	Vietnam	VN	15.9333	108.2667	15	1000000

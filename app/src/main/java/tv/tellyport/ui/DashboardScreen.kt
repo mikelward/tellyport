@@ -27,6 +27,7 @@ import androidx.compose.material.icons.rounded.Apps
 import androidx.compose.material.icons.rounded.Build
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.LocationCity
 import androidx.compose.material.icons.rounded.LocationOn
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.PowerSettingsNew
@@ -69,6 +70,7 @@ fun DashboardScreen(
     onActivateProfile: (RegionalProfile) -> Unit,
     onDisconnectAll: () -> Unit,
     onOpenAppConfigurator: () -> Unit,
+    onOpenWorldCityPicker: () -> Unit,
     onCreateProfile: () -> Unit,
     onEditProfile: (RegionalProfile) -> Unit,
     onDeleteProfile: (RegionalProfile) -> Unit,
@@ -197,6 +199,11 @@ fun DashboardScreen(
                         text = if (mappedAppsCount > 0) "Configure Apps ($mappedAppsCount)" else "Configure Apps",
                         icon = Icons.Rounded.Apps,
                         onClick = onOpenAppConfigurator
+                    )
+                    TellyportSecondaryButton(
+                        text = "World Cities",
+                        icon = Icons.Rounded.LocationCity,
+                        onClick = onOpenWorldCityPicker
                     )
                     TellyportSecondaryButton(
                         text = "New Profile",
