@@ -84,8 +84,12 @@ class TellyportApplication : Application() {
 
         applicationScope.launch {
             profileRepository.ensureSeeded()
-            // Reconcile persisted active session on cold start: clear stale session if VPN is down.
-            if (!vpnNetworkMonitor.refreshState().isConnected) {
+            // Reconcile persisted active session on cold start against live VPN identity.
+            val liveVpn = vpnNetworkMonitor.refreshState()
+            val persisted = profileRepository.getActiveSessionSnapshot()
+            if (persisted != null &&
+                !ProfileActivationCoordinator.isPersistedSessionValidForLiveVpn(liveVpn, persisted)
+            ) {
                 profileRepository.clearActiveSession()
             }
         }

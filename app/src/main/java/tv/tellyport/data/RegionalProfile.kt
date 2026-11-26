@@ -37,6 +37,7 @@ data class ActiveVpnSession(
     val profileId: String,
     val vpnBackend: VpnBackend,
     val tunnelName: String? = null,
+    val networkHandle: Long? = null,
     val activatedAtEpochMs: Long = 0L
 )
 

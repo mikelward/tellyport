@@ -491,4 +491,129 @@ class VpnControllerTest {
         assertTrue(controller.openShizukuApp())
         assertFalse(controller.launchApp("com.not.installed"))
     }
+
+    @Test
+    fun stalePersistedWgSession_whenLiveVpnIsTailscale_rejectsFastPathTearsDownAndConnectsWg() = runTest {
+        val dispatcher = RecordingIntentDispatcher()
+        val controller = VpnController(dispatcher)
+        // User switched externally to Tailscale (handle 700, 100.64.x) while Tellyport was dead,
+        // leaving behind a stale persisted WG Tunnel session (handle 600).
+        val vpnState = MutableStateFlow(
+            VpnConnectionState(
+                isConnected = true,
+                networkHandle = 700L,
+                inferredBackend = InferredVpnBackend.TAILSCALE,
+                ipv4Addresses = listOf("100.88.1.5")
+            )
+        )
+        val mockStatus = MutableStateFlow(MockLocationStatus())
+        var persistedSession: ActiveVpnSession? = ActiveVpnSession(
+            profileId = "preset-sydney",
+            vpnBackend = VpnBackend.WG_TUNNEL,
+            tunnelName = "unifi-au-syd",
+            networkHandle = 600L,
+            activatedAtEpochMs = 1_000L
+        )
+
+        val coordinator = ProfileActivationCoordinator(
+            vpnController = controller,
+            vpnStateFlow = vpnState,
+            mockLocationStatusFlow = mockStatus,
+            startMockLocation = autoInjectingMockStarter(mockStatus),
+            stopMockLocation = {},
+            wgRemoteControlKeyProvider = { "wg-secret" },
+            persistedSessionProvider = { persistedSession },
+            persistActiveSession = { persistedSession = it },
+            stabilizationDelayMs = 100L
+        )
+
+        val sydneyWg = RegionalProfile(
+            id = "preset-sydney",
+            name = "Sydney",
+            regionCode = "AU",
+            latitude = -33.8688,
+            longitude = 151.2093,
+            vpnBackend = VpnBackend.WG_TUNNEL,
+            tunnelName = "unifi-au-syd",
+            mappedPackages = listOf("au.com.stan.and"),
+            autoLaunchApp = true
+        )
+
+        val deferred = async { coordinator.activate(sydneyWg) }
+        advanceTimeBy(200L)
+
+        // Must NOT take fast-path: stale session cleared, Tailscale & WG disconnects dispatched, app NOT launched yet.
+        assertNull(persistedSession)
+        assertTrue(dispatcher.broadcasts.any { it.action == VpnController.ACTION_TAILSCALE_DISCONNECT })
+        assertTrue(dispatcher.startedActivities.isEmpty())
+
+        // Tailscale drops, then WG Tunnel connects on handle 800.
+        vpnState.value = VpnConnectionState(isConnected = false, inferredBackend = InferredVpnBackend.NONE)
+        runCurrent()
+        assertEquals(VpnController.ACTION_WG_TUNNEL_CONNECT, dispatcher.broadcasts.last().action)
+
+        vpnState.value = VpnConnectionState(
+            isConnected = true,
+            networkHandle = 800L,
+            inferredBackend = InferredVpnBackend.UNKNOWN_EXTERNAL,
+            ipv4Addresses = listOf("10.20.0.2")
+        )
+        advanceTimeBy(200L)
+
+        val result = deferred.await()
+        assertTrue(result is ActivationProgress.Active)
+        assertEquals(800L, persistedSession?.networkHandle)
+        assertEquals(listOf("au.com.stan.and"), dispatcher.startedActivities.map { it.`package` })
+    }
+
+    @Test
+    fun validPersistedWgSession_withMatchingNetworkHandle_takesFastPathWithoutDisconnect() = runTest {
+        val dispatcher = RecordingIntentDispatcher()
+        val controller = VpnController(dispatcher)
+        val vpnState = MutableStateFlow(
+            VpnConnectionState(
+                isConnected = true,
+                networkHandle = 600L,
+                inferredBackend = InferredVpnBackend.UNKNOWN_EXTERNAL,
+                ipv4Addresses = listOf("10.20.0.2")
+            )
+        )
+        val mockStatus = MutableStateFlow(MockLocationStatus())
+        var persistedSession: ActiveVpnSession? = ActiveVpnSession(
+            profileId = "preset-sydney",
+            vpnBackend = VpnBackend.WG_TUNNEL,
+            tunnelName = "unifi-au-syd",
+            networkHandle = 600L,
+            activatedAtEpochMs = 1_000L
+        )
+
+        val coordinator = ProfileActivationCoordinator(
+            vpnController = controller,
+            vpnStateFlow = vpnState,
+            mockLocationStatusFlow = mockStatus,
+            startMockLocation = autoInjectingMockStarter(mockStatus),
+            stopMockLocation = {},
+            wgRemoteControlKeyProvider = { "wg-secret" },
+            persistedSessionProvider = { persistedSession },
+            persistActiveSession = { persistedSession = it }
+        )
+
+        val sydneyWg = RegionalProfile(
+            id = "preset-sydney",
+            name = "Sydney",
+            regionCode = "AU",
+            latitude = -33.8688,
+            longitude = 151.2093,
+            vpnBackend = VpnBackend.WG_TUNNEL,
+            tunnelName = "unifi-au-syd",
+            mappedPackages = listOf("au.com.stan.and"),
+            autoLaunchApp = true
+        )
+
+        val result = coordinator.activate(sydneyWg)
+        assertTrue(result is ActivationProgress.Active)
+        assertTrue(dispatcher.broadcasts.isEmpty())
+        assertEquals(600L, persistedSession?.networkHandle)
+        assertEquals(listOf("au.com.stan.and"), dispatcher.startedActivities.map { it.`package` })
+    }
 }
