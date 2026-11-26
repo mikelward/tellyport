@@ -1,14 +1,25 @@
 package tv.tellyport.boot
 
+import android.app.job.JobScheduler
+import android.content.Context
+import android.content.Intent
+import androidx.test.core.app.ApplicationProvider
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 import tv.tellyport.data.BootRecoveryDiagnostics
 
 @OptIn(ExperimentalCoroutinesApi::class)
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [34])
 class BootRecoveryTest {
 
     private class FakeBootPlatform(
@@ -44,6 +55,22 @@ class BootRecoveryTest {
         }
 
         override fun currentTimeEpochMs(): Long = 1_730_000_000_000L
+    }
+
+    @Test
+    fun bootRecoveryReceiver_schedulesBootRecoveryJobServiceOnBootCompletedAndIgnoresOtherActions() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val scheduler = context.getSystemService(Context.JOB_SCHEDULER_SERVICE) as JobScheduler
+        scheduler.cancelAll()
+
+        val receiver = BootRecoveryReceiver()
+        receiver.onReceive(context, Intent(Intent.ACTION_TIME_CHANGED))
+        assertNull(scheduler.getPendingJob(BootRecoveryJobService.JOB_ID))
+
+        receiver.onReceive(context, Intent(Intent.ACTION_BOOT_COMPLETED))
+        val scheduled = scheduler.getPendingJob(BootRecoveryJobService.JOB_ID)
+        assertNotNull(scheduled)
+        assertEquals(BootRecoveryJobService::class.java.name, scheduled?.service?.className)
     }
 
     @Test

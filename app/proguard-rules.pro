@@ -16,3 +16,8 @@
 -keepclasseswithmembers class tv.tellyport.data.** {
     kotlinx.serialization.KSerializer serializer(...);
 }
+
+# Keep Shizuku UserService instantiated reflectively inside Shizuku's process
+-keep class tv.tellyport.shizuku.ForceStopUserService { *; }
+-keep class tv.tellyport.shizuku.IForceStopService$** { *; }
+

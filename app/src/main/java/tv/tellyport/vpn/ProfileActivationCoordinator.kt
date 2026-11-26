@@ -1,5 +1,8 @@
 package tv.tellyport.vpn
 
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -62,12 +65,38 @@ class ProfileActivationCoordinator(
     private val epochTimeProvider: () -> Long = { System.currentTimeMillis() }
 ) {
     private val activationMutex = Mutex()
+    private val activeCallLock = Any()
 
     private val _progress = MutableStateFlow<ActivationProgress>(ActivationProgress.Idle)
     val progress: StateFlow<ActivationProgress> = _progress.asStateFlow()
 
     @Volatile
     private var pendingWgTunnelName: String? = null
+
+    private var activeActivationJob: Job? = null
+    private var activeActivationProfileId: String? = null
+
+    /**
+     * Returns `true` if any caller (UI or AccessibilityService) is currently activating [profileId].
+     */
+    fun isActivatingProfile(profileId: String): Boolean = synchronized(activeCallLock) {
+        activeActivationJob?.isActive == true && activeActivationProfileId == profileId
+    }
+
+    /**
+     * Cancels and awaits any in-flight activation (from UI or AccessibilityService), optionally
+     * scoped to [onlyProfileId]. Safe to call before acquiring [activationMutex].
+     */
+    suspend fun cancelActiveActivation(onlyProfileId: String? = null) {
+        val jobToCancel = synchronized(activeCallLock) {
+            val currentJob = activeActivationJob?.takeIf { it.isActive } ?: return@synchronized null
+            if (onlyProfileId != null && activeActivationProfileId != onlyProfileId) {
+                return@synchronized null
+            }
+            currentJob
+        }
+        jobToCancel?.cancelAndJoin()
+    }
 
     /**
      * Checks whether [profile] is already satisfied right now (both VPN and mock location),
@@ -97,7 +126,31 @@ class ProfileActivationCoordinator(
         profile: RegionalProfile,
         targetPackageOverride: String? = null,
         clearTaskOnLaunch: Boolean = false
-    ): ActivationProgress = activationMutex.withLock {
+    ): ActivationProgress {
+        val myJob = currentCoroutineContext()[Job]
+        return activationMutex.withLock {
+            synchronized(activeCallLock) {
+                activeActivationJob = myJob
+                activeActivationProfileId = profile.id
+            }
+            try {
+                activateLocked(profile, targetPackageOverride, clearTaskOnLaunch)
+            } finally {
+                synchronized(activeCallLock) {
+                    if (activeActivationJob === myJob) {
+                        activeActivationJob = null
+                        activeActivationProfileId = null
+                    }
+                }
+            }
+        }
+    }
+
+    private suspend fun activateLocked(
+        profile: RegionalProfile,
+        targetPackageOverride: String?,
+        clearTaskOnLaunch: Boolean
+    ): ActivationProgress {
         val wgKey = wgRemoteControlKeyProvider().trim()
         val targetPackage = (targetPackageOverride ?: if (profile.autoLaunchApp) profile.primaryTargetPackage else null)
             ?.trim()
@@ -110,7 +163,7 @@ class ProfileActivationCoordinator(
                 message = "${profile.name} has no VPN backend configured yet. Open Edit to assign Tailscale, WG Tunnel, SOCKS Wrapper, or No VPN."
             )
             _progress.value = warning
-            return@withLock warning
+            return warning
         }
 
         // Validate required authentication key before attempting WG Tunnel remote control.
@@ -120,7 +173,7 @@ class ProfileActivationCoordinator(
                 message = "WG Tunnel remote control key is not configured. Copy the key from WG Tunnel → Settings → Remote App Control and save it in Setup & Diagnostics."
             )
             _progress.value = warning
-            return@withLock warning
+            return warning
         }
 
         // Step 1: Synchronously query live ConnectivityManager state + rehydrated DataStore session.
@@ -139,7 +192,7 @@ class ProfileActivationCoordinator(
         // Fast path for profiles with VpnBackend.NONE (mock location only).
         if (profile.vpnBackend == VpnBackend.NONE) {
             val mockResult = ensureMockLocationRunning(profile)
-            return@withLock finishWithOptionalLaunch(
+            return finishWithOptionalLaunch(
                 profile = profile,
                 targetPackage = targetPackage,
                 clearTaskOnLaunch = clearTaskOnLaunch,
@@ -172,7 +225,7 @@ class ProfileActivationCoordinator(
                 persistActiveSession(null)
             }
 
-            return@withLock finishWithOptionalLaunch(
+            return finishWithOptionalLaunch(
                 profile = profile,
                 targetPackage = targetPackage,
                 clearTaskOnLaunch = clearTaskOnLaunch,
@@ -298,7 +351,7 @@ class ProfileActivationCoordinator(
             persistActiveSession(null)
         }
 
-        return@withLock finishWithOptionalLaunch(
+        return finishWithOptionalLaunch(
             profile = profile,
             targetPackage = targetPackage,
             clearTaskOnLaunch = clearTaskOnLaunch,
@@ -342,24 +395,28 @@ class ProfileActivationCoordinator(
     }
 
     /**
-     * Stops mock location injection, clears persisted [ActiveVpnSession], and broadcasts
-     * disconnect to Tailscale plus any persisted/pending WG tunnels (and SOCKS Wrapper if active).
+     * Aborts any in-flight activation (regardless of whether started by the UI or
+     * AccessibilityService), then stops mock location injection, clears persisted [ActiveVpnSession],
+     * and broadcasts disconnect to Tailscale plus any persisted/pending WG tunnels.
      */
-    suspend fun deactivateAll() = activationMutex.withLock {
-        stopMockLocation()
-        val persisted = persistedSessionProvider()
-        val wgTunnelsToStop = buildList<String?> {
-            persisted?.takeIf { it.vpnBackend == VpnBackend.WG_TUNNEL }?.tunnelName?.let { add(it) }
-            pendingWgTunnelName?.let { add(it) }
+    suspend fun deactivateAll() {
+        cancelActiveActivation()
+        activationMutex.withLock {
+            stopMockLocation()
+            val persisted = persistedSessionProvider()
+            val wgTunnelsToStop = buildList<String?> {
+                persisted?.takeIf { it.vpnBackend == VpnBackend.WG_TUNNEL }?.tunnelName?.let { add(it) }
+                pendingWgTunnelName?.let { add(it) }
+            }
+            vpnController.disconnectAll(
+                wgTunnelNames = wgTunnelsToStop,
+                wgRemoteControlKey = wgRemoteControlKeyProvider(),
+                includeSocksWrapper = persisted?.vpnBackend == VpnBackend.SOCKS_WRAPPER
+            )
+            pendingWgTunnelName = null
+            persistActiveSession(null)
+            _progress.value = ActivationProgress.Idle
         }
-        vpnController.disconnectAll(
-            wgTunnelNames = wgTunnelsToStop,
-            wgRemoteControlKey = wgRemoteControlKeyProvider(),
-            includeSocksWrapper = persisted?.vpnBackend == VpnBackend.SOCKS_WRAPPER
-        )
-        pendingWgTunnelName = null
-        persistActiveSession(null)
-        _progress.value = ActivationProgress.Idle
     }
 
     /**
@@ -407,7 +464,9 @@ class ProfileActivationCoordinator(
         }
         val latMatch = status.configuredLatitude?.let { abs(it - profile.latitude) < 1e-5 } == true
         val lonMatch = status.configuredLongitude?.let { abs(it - profile.longitude) < 1e-5 } == true
-        return latMatch && lonMatch
+        val altMatch = status.configuredAltitude?.let { abs(it - profile.altitude) < 1e-3 } == true
+        val accMatch = status.configuredAccuracyMeters?.let { abs(it - profile.accuracyMeters) < 1e-3f } == true
+        return latMatch && lonMatch && altMatch && accMatch
     }
 
     private suspend fun ensureMockLocationRunning(profile: RegionalProfile): MockWaitResult {
