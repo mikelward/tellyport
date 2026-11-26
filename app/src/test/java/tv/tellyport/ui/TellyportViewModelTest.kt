@@ -438,12 +438,29 @@ class TellyportViewModelTest {
             assertTrue(mockedCities.isEmpty())
             assertEquals(TellyportDestination.WorldCityPicker, viewModel.uiState.value.destination)
 
-            // Once mock location app is selected, quick mock starts Tokyo immediately and returns to Dashboard.
+            // Start a pending profile activation (InProgress), then switch to a quick mock city.
             mockAppSelected = true
+            val pendingProfile = RegionalProfile(
+                id = "pending-us",
+                name = "New York",
+                regionCode = "US",
+                latitude = 40.7128,
+                longitude = -74.0060,
+                vpnBackend = VpnBackend.TAILSCALE,
+                autoLaunchApp = false
+            )
+            viewModel.activateProfile(pendingProfile)
+            advanceTimeBy(500L)
+            runCurrent()
+            assertTrue(viewModel.uiState.value.activationProgress is ActivationProgress.InProgress)
+
+            // Quick mock city cancels the pending activation, resets progress to Idle, and shows city banner.
             viewModel.startQuickMockCity(tokyo)
             runCurrent()
             assertEquals(listOf(tokyo), mockedCities)
+            assertEquals(ActivationProgress.Idle, viewModel.uiState.value.activationProgress)
             assertEquals(TellyportDestination.Dashboard, viewModel.uiState.value.destination)
+            assertTrue(viewModel.uiState.value.bannerMessage?.contains("Tokyo") == true)
 
             // Creating a profile for a city pre-populates ProfileEditor with initialCity.
             viewModel.openCreateProfileForCity(tokyo)
