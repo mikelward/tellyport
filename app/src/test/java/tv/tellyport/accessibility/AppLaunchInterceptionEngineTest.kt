@@ -145,6 +145,8 @@ class AppLaunchInterceptionEngineTest {
                     activeProfileName = profile.name,
                     configuredLatitude = profile.latitude,
                     configuredLongitude = profile.longitude,
+                    configuredAltitude = profile.altitude,
+                    configuredAccuracyMeters = profile.accuracyMeters,
                     injectionCount = 1L
                 )
             },
@@ -338,6 +340,8 @@ class AppLaunchInterceptionEngineTest {
                     activeProfileName = profile.name,
                     configuredLatitude = profile.latitude,
                     configuredLongitude = profile.longitude,
+                    configuredAltitude = profile.altitude,
+                    configuredAccuracyMeters = profile.accuracyMeters,
                     injectionCount = 1L
                 )
             },
@@ -430,6 +434,8 @@ class AppLaunchInterceptionEngineTest {
                     activeProfileName = profile.name,
                     configuredLatitude = profile.latitude,
                     configuredLongitude = profile.longitude,
+                    configuredAltitude = profile.altitude,
+                    configuredAccuracyMeters = profile.accuracyMeters,
                     injectionCount = 1L
                 )
             },
@@ -505,6 +511,8 @@ class AppLaunchInterceptionEngineTest {
                     activeProfileName = profile.name,
                     configuredLatitude = profile.latitude,
                     configuredLongitude = profile.longitude,
+                    configuredAltitude = profile.altitude,
+                    configuredAccuracyMeters = profile.accuracyMeters,
                     injectionCount = 1L
                 )
             },

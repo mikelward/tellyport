@@ -265,6 +265,7 @@ class TellyportViewModel(
 
     fun deleteProfile(profile: RegionalProfile) {
         val isDeletingPendingActivation = activatingProfileId == profile.id ||
+            coordinator.isActivatingProfile(profile.id) ||
             (coordinator.progress.value as? ActivationProgress.InProgress)?.profileId == profile.id
         val isDeletingActiveProfile = mockLocationStatusFlow.value.activeProfileId == profile.id ||
             uiState.value.activeSession?.profileId == profile.id
@@ -290,7 +291,13 @@ class TellyportViewModel(
     }
 
     fun resetDefaultProfiles() {
+        val pendingJob = activationJob
+        activationJob = null
+        activatingProfileId = null
         viewModelScope.launch {
+            pendingJob?.cancelAndJoin()
+            // Tear down any active/pending named tunnel BEFORE clearing persisted session metadata.
+            coordinator.deactivateAll()
             profileRepository.resetDefaults()
             _bannerMessage.value = "Restored default New York, London, and Sydney profiles."
         }

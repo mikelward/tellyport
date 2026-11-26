@@ -193,6 +193,7 @@ class MockLocationService : Service() {
                         configuredLatitude = latitude,
                         configuredLongitude = longitude,
                         configuredAltitude = altitude,
+                        configuredAccuracyMeters = accuracyMeters,
                         gpsProviderRegistered = gpsOk,
                         networkProviderRegistered = networkOk,
                         injectionCount = 0L,

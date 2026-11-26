@@ -71,6 +71,8 @@ class VpnControllerTest {
             activeProfileName = profile.name,
             configuredLatitude = profile.latitude,
             configuredLongitude = profile.longitude,
+            configuredAltitude = profile.altitude,
+            configuredAccuracyMeters = profile.accuracyMeters,
             lastInjectedLatitude = profile.latitude,
             lastInjectedLongitude = profile.longitude,
             injectionCount = 1L
@@ -673,6 +675,108 @@ class VpnControllerTest {
         val result = deferred.await()
         assertTrue(result is ActivationProgress.Warning)
         assertNull(persistedSession)
+        assertTrue(dispatcher.startedActivities.isEmpty())
+    }
+
+    @Test
+    fun editingAltitudeOrAccuracyOnActiveProfile_restartsMockLocationInsteadOfSkipping() = runTest {
+        val dispatcher = RecordingIntentDispatcher()
+        val controller = VpnController(dispatcher)
+        val vpnState = MutableStateFlow(VpnConnectionState(isConnected = false))
+        val mockStatus = MutableStateFlow(MockLocationStatus())
+        val startedProfiles = mutableListOf<RegionalProfile>()
+
+        val coordinator = ProfileActivationCoordinator(
+            vpnController = controller,
+            vpnStateFlow = vpnState,
+            mockLocationStatusFlow = mockStatus,
+            startMockLocation = autoInjectingMockStarter(mockStatus, startedProfiles),
+            stopMockLocation = {}
+        )
+
+        val baseProfile = RegionalProfile(
+            id = "uk-edit-alt-acc",
+            name = "London",
+            regionCode = "UK",
+            latitude = 51.5074,
+            longitude = -0.1278,
+            altitude = 12.0,
+            accuracyMeters = 3.0f,
+            vpnBackend = VpnBackend.NONE,
+            autoLaunchApp = false
+        )
+
+        assertTrue(coordinator.activate(baseProfile) is ActivationProgress.Active)
+        assertEquals(1, startedProfiles.size)
+
+        // Identical profile -> mock location already satisfied, no restart.
+        assertTrue(coordinator.activate(baseProfile) is ActivationProgress.Active)
+        assertEquals(1, startedProfiles.size)
+
+        // Altitude edited -> must restart mock location.
+        val altitudeEdited = baseProfile.copy(altitude = 85.0)
+        assertFalse(coordinator.isProfileCurrentlySatisfied(altitudeEdited))
+        assertTrue(coordinator.activate(altitudeEdited) is ActivationProgress.Active)
+        assertEquals(2, startedProfiles.size)
+        assertEquals(85.0, startedProfiles.last().altitude, 1e-6)
+
+        // Accuracy edited -> must restart mock location.
+        val accuracyEdited = altitudeEdited.copy(accuracyMeters = 15.0f)
+        assertFalse(coordinator.isProfileCurrentlySatisfied(accuracyEdited))
+        assertTrue(coordinator.activate(accuracyEdited) is ActivationProgress.Active)
+        assertEquals(3, startedProfiles.size)
+        assertEquals(15.0f, startedProfiles.last().accuracyMeters, 1e-6f)
+    }
+
+    @Test
+    fun deactivateAll_cancelsAnotherCallersInFlightActivationImmediatelyBeforeTearingDown() = runTest {
+        val dispatcher = RecordingIntentDispatcher()
+        val controller = VpnController(dispatcher)
+        val vpnState = MutableStateFlow(VpnConnectionState(isConnected = false))
+        val mockStatus = MutableStateFlow(MockLocationStatus())
+        var stopMockCount = 0
+
+        val coordinator = ProfileActivationCoordinator(
+            vpnController = controller,
+            vpnStateFlow = vpnState,
+            mockLocationStatusFlow = mockStatus,
+            startMockLocation = autoInjectingMockStarter(mockStatus),
+            stopMockLocation = {
+                stopMockCount++
+                mockStatus.value = MockLocationStatus(isActive = false)
+            },
+            wgRemoteControlKeyProvider = { "wg-cancel-key" },
+            vpnWaitTimeoutMs = 8_000L
+        )
+
+        val sydneyWg = RegionalProfile(
+            id = "preset-sydney",
+            name = "Sydney",
+            regionCode = "AU",
+            latitude = -33.8688,
+            longitude = 151.2093,
+            vpnBackend = VpnBackend.WG_TUNNEL,
+            tunnelName = "unifi-au-syd",
+            mappedPackages = listOf("au.com.stan.and"),
+            autoLaunchApp = true
+        )
+
+        // Caller A (e.g., AccessibilityService) starts activation and blocks waiting for WG Tunnel.
+        val callerA = async { coordinator.activate(sydneyWg) }
+        runCurrent()
+        assertTrue(coordinator.isActivatingProfile("preset-sydney"))
+
+        // Caller B (e.g., UI Stop All) invokes deactivateAll() without holding Caller A's Job.
+        // It must cancel Caller A immediately without waiting for the 8s VPN timeout!
+        val callerB = async { coordinator.deactivateAll() }
+        runCurrent()
+
+        assertTrue(callerA.isCancelled)
+        callerB.await()
+        assertFalse(coordinator.isActivatingProfile("preset-sydney"))
+        assertTrue(stopMockCount >= 1)
+        val wgStop = dispatcher.broadcasts.last { it.action == VpnController.ACTION_WG_TUNNEL_DISCONNECT }
+        assertEquals("unifi-au-syd", wgStop.getStringExtra(VpnController.EXTRA_WG_TUNNEL_NAME))
         assertTrue(dispatcher.startedActivities.isEmpty())
     }
 }

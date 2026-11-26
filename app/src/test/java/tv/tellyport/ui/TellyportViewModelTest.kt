@@ -113,6 +113,8 @@ class TellyportViewModelTest {
                     activeProfileName = profile.name,
                     configuredLatitude = profile.latitude,
                     configuredLongitude = profile.longitude,
+                    configuredAltitude = profile.altitude,
+                    configuredAccuracyMeters = profile.accuracyMeters,
                     injectionCount = 1L
                 )
             },
@@ -182,6 +184,98 @@ class TellyportViewModelTest {
             assertTrue(stopMockCount >= 1)
             assertEquals(ActivationProgress.Idle, viewModel.uiState.first().activationProgress)
             assertTrue(repository.profiles.first().none { it.id == targetProfile.id })
+        } finally {
+            storeJob.cancelAndJoin()
+        }
+    }
+
+    @Test
+    fun resetDefaultProfiles_stopsActiveNamedWgTunnelBeforeClearingSessionAndResetting() = runTest(testDispatcher) {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val storeJob = SupervisorJob()
+        val storeScope = CoroutineScope(storeJob + testDispatcher)
+        val dataStore = DataStoreFactory.create(
+            serializer = ProfileStoreSerializer,
+            scope = storeScope,
+            produceFile = { tempFolder.root.resolve("vm_reset_active.json") }
+        )
+        val repository = ProfileRepository(dataStore)
+        val dispatcher = FakeIntentDispatcher()
+        val vpnController = VpnController(dispatcher)
+        val vpnState = MutableStateFlow(VpnConnectionState(isConnected = true, networkHandle = 901L))
+        val mockStatus = MutableStateFlow(MockLocationStatus())
+        var stopMockCount = 0
+
+        val coordinator = ProfileActivationCoordinator(
+            vpnController = vpnController,
+            vpnStateFlow = vpnState,
+            mockLocationStatusFlow = mockStatus,
+            startMockLocation = { profile, sessionId ->
+                mockStatus.value = MockLocationStatus(
+                    isActive = true,
+                    sessionId = sessionId,
+                    activeProfileId = profile.id,
+                    activeProfileName = profile.name,
+                    configuredLatitude = profile.latitude,
+                    configuredLongitude = profile.longitude,
+                    configuredAltitude = profile.altitude,
+                    configuredAccuracyMeters = profile.accuracyMeters,
+                    injectionCount = 1L
+                )
+            },
+            stopMockLocation = {
+                stopMockCount++
+                mockStatus.value = MockLocationStatus(isActive = false)
+            },
+            wgRemoteControlKeyProvider = { "wg-key-reset" },
+            persistedSessionProvider = { repository.getActiveSessionSnapshot() },
+            persistActiveSession = { repository.setActiveSession(it) }
+        )
+
+        val readyPermissions = MockLocationPermissionStatus(
+            isMockLocationAppSelected = true,
+            hasFineLocationPermission = true,
+            hasNotificationPermission = true,
+            adbCommand = MockLocationPermissionChecker.buildAdbMockLocationCommand("tv.tellyport")
+        )
+
+        val viewModel = TellyportViewModel(
+            appContext = context,
+            profileRepository = repository,
+            vpnController = vpnController,
+            vpnNetworkMonitor = VpnNetworkMonitor(context),
+            permissionChecker = MockLocationPermissionChecker(context),
+            shizukuForceStopper = ShizukuForceStopper(context),
+            coordinator = coordinator,
+            vpnStateFlow = vpnState,
+            mockLocationStatusFlow = mockStatus,
+            permissionStatusProvider = { readyPermissions },
+            shizukuStatusProvider = { ShizukuStatus(false, false, false) },
+            loadInstalledApps = { emptyList() }
+        )
+
+        try {
+            repository.setWgRemoteControlKey("wg-key-reset")
+            repository.setActiveSession(
+                tv.tellyport.data.ActiveVpnSession(
+                    profileId = "custom-syd",
+                    vpnBackend = VpnBackend.WG_TUNNEL,
+                    tunnelName = "unifi-au-syd",
+                    networkHandle = 901L,
+                    activatedAtEpochMs = 1_000L
+                )
+            )
+            runCurrent()
+
+            viewModel.resetDefaultProfiles()
+            runCurrent()
+
+            val wgStop = dispatcher.broadcasts.lastOrNull { it.action == VpnController.ACTION_WG_TUNNEL_DISCONNECT }
+            assertEquals("unifi-au-syd", wgStop?.getStringExtra(VpnController.EXTRA_WG_TUNNEL_NAME))
+            assertEquals("wg-key-reset", wgStop?.getStringExtra(VpnController.EXTRA_WG_REMOTE_KEY))
+            assertTrue(stopMockCount >= 1)
+            assertEquals(null, repository.getActiveSessionSnapshot())
+            assertEquals(3, repository.profiles.first().size)
         } finally {
             storeJob.cancelAndJoin()
         }

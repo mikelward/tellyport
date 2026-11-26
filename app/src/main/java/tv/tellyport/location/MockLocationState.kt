@@ -19,6 +19,7 @@ data class MockLocationStatus(
     val configuredLatitude: Double? = null,
     val configuredLongitude: Double? = null,
     val configuredAltitude: Double? = null,
+    val configuredAccuracyMeters: Float? = null,
     val lastInjectedLatitude: Double? = null,
     val lastInjectedLongitude: Double? = null,
     val lastUpdatedEpochMs: Long? = null,
