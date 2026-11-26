@@ -15,6 +15,13 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonPrimitive
 import java.io.InputStream
 import java.io.OutputStream
 
@@ -31,6 +38,8 @@ class SingleTailscaleConstraintException(
 
 /**
  * JSON [Serializer] for persisting [ProfileStore] inside Jetpack DataStore.
+ * Automatically migrates v1 schema fields (`vpnTunnelOrNodeName` -> `tunnelName`,
+ * `targetAppPackage` -> `mappedPackages`) so upgrading users never lose saved configuration.
  */
 object ProfileStoreSerializer : Serializer<ProfileStore> {
     private val json = Json {
@@ -49,9 +58,65 @@ object ProfileStoreSerializer : Serializer<ProfileStore> {
         val raw = input.readBytes().decodeToString()
         if (raw.isBlank()) return defaultValue
         return try {
-            json.decodeFromString(ProfileStore.serializer(), raw)
+            val parsed = json.parseToJsonElement(raw)
+            val migrated = migrateLegacyStoreJson(parsed)
+            json.decodeFromJsonElement(ProfileStore.serializer(), migrated)
         } catch (ex: SerializationException) {
             throw CorruptionException("Unable to deserialize Tellyport profiles store", ex)
+        } catch (ex: IllegalArgumentException) {
+            throw CorruptionException("Unable to deserialize Tellyport profiles store", ex)
+        }
+    }
+
+    private fun migrateLegacyStoreJson(element: JsonElement): JsonElement {
+        val root = element as? JsonObject ?: return element
+        val rawProfiles = root["profiles"] as? JsonArray ?: return root
+
+        val migratedProfiles = JsonArray(
+            rawProfiles.map { entry ->
+                val profileObj = entry as? JsonObject ?: return@map entry
+                migrateLegacyProfileJson(profileObj)
+            }
+        )
+
+        return buildJsonObject {
+            root.forEach { (key, value) ->
+                if (key == "profiles") {
+                    put("profiles", migratedProfiles)
+                } else {
+                    put(key, value)
+                }
+            }
+        }
+    }
+
+    private fun migrateLegacyProfileJson(profile: JsonObject): JsonObject {
+        val existingTunnel = (profile["tunnelName"] as? JsonPrimitive)?.contentOrNull?.trim()
+        val legacyTunnel = (profile["vpnTunnelOrNodeName"] as? JsonPrimitive)?.contentOrNull?.trim()
+
+        val existingMapped = (profile["mappedPackages"] as? JsonArray)
+            ?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull?.trim() }
+            ?.filter { it.isNotEmpty() }
+            .orEmpty()
+        val legacyTargetApp = (profile["targetAppPackage"] as? JsonPrimitive)?.contentOrNull?.trim()
+
+        val needsTunnelMigration = existingTunnel.isNullOrEmpty() && !legacyTunnel.isNullOrEmpty()
+        val needsAppMigration = existingMapped.isEmpty() && !legacyTargetApp.isNullOrEmpty()
+
+        if (!needsTunnelMigration && !needsAppMigration) {
+            return profile
+        }
+
+        return buildJsonObject {
+            profile.forEach { (key, value) ->
+                put(key, value)
+            }
+            if (needsTunnelMigration) {
+                put("tunnelName", JsonPrimitive(legacyTunnel))
+            }
+            if (needsAppMigration) {
+                put("mappedPackages", JsonArray(listOf(JsonPrimitive(legacyTargetApp))))
+            }
         }
     }
 
