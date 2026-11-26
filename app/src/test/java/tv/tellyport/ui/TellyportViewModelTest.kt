@@ -374,4 +374,85 @@ class TellyportViewModelTest {
             storeJob.cancelAndJoin()
         }
     }
+
+    @Test
+    fun worldCityPicker_quickMockStartsMockLocationAndCreateProfilePrefillsCity() = runTest(testDispatcher) {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val storeJob = SupervisorJob()
+        val storeScope = CoroutineScope(storeJob + testDispatcher)
+        val dataStore = DataStoreFactory.create(
+            serializer = ProfileStoreSerializer,
+            scope = storeScope,
+            produceFile = { tempFolder.root.resolve("vm_world_city.json") }
+        )
+        val repository = ProfileRepository(dataStore)
+        val dispatcher = FakeIntentDispatcher()
+        val vpnController = VpnController(dispatcher)
+        val vpnState = MutableStateFlow(VpnConnectionState(isConnected = false))
+        val mockStatus = MutableStateFlow(MockLocationStatus())
+        val mockedCities = mutableListOf<tv.tellyport.data.WorldCity>()
+
+        val coordinator = ProfileActivationCoordinator(
+            vpnController = vpnController,
+            vpnStateFlow = vpnState,
+            mockLocationStatusFlow = mockStatus,
+            startMockLocation = { _, _ -> },
+            stopMockLocation = {}
+        )
+
+        var mockAppSelected = false
+        val viewModel = TellyportViewModel(
+            appContext = context,
+            profileRepository = repository,
+            vpnController = vpnController,
+            vpnNetworkMonitor = VpnNetworkMonitor(context),
+            permissionChecker = MockLocationPermissionChecker(context),
+            shizukuForceStopper = ShizukuForceStopper(context),
+            coordinator = coordinator,
+            vpnStateFlow = vpnState,
+            mockLocationStatusFlow = mockStatus,
+            permissionStatusProvider = {
+                MockLocationPermissionStatus(
+                    isMockLocationAppSelected = mockAppSelected,
+                    hasFineLocationPermission = true,
+                    hasNotificationPermission = true,
+                    adbCommand = MockLocationPermissionChecker.buildAdbMockLocationCommand("tv.tellyport")
+                )
+            },
+            shizukuStatusProvider = { ShizukuStatus(false, false, false) },
+            loadInstalledApps = { emptyList() },
+            startQuickMockLocation = { city, _ -> mockedCities.add(city) },
+            ioDispatcher = testDispatcher
+        )
+
+        val collectorJob = backgroundScope.launch { viewModel.uiState.collect {} }
+        try {
+            val tokyo = tv.tellyport.data.WorldCityCatalog.search("Tokyo", limit = 1).single()
+            viewModel.openWorldCityPicker()
+            runCurrent()
+            assertEquals(TellyportDestination.WorldCityPicker, viewModel.uiState.value.destination)
+
+            // Without mock location app selected, quick mock refuses cleanly and warns.
+            viewModel.startQuickMockCity(tokyo)
+            runCurrent()
+            assertTrue(mockedCities.isEmpty())
+            assertEquals(TellyportDestination.WorldCityPicker, viewModel.uiState.value.destination)
+
+            // Once mock location app is selected, quick mock starts Tokyo immediately and returns to Dashboard.
+            mockAppSelected = true
+            viewModel.startQuickMockCity(tokyo)
+            runCurrent()
+            assertEquals(listOf(tokyo), mockedCities)
+            assertEquals(TellyportDestination.Dashboard, viewModel.uiState.value.destination)
+
+            // Creating a profile for a city pre-populates ProfileEditor with initialCity.
+            viewModel.openCreateProfileForCity(tokyo)
+            runCurrent()
+            val editorDest = viewModel.uiState.value.destination as? TellyportDestination.ProfileEditor
+            assertEquals(tokyo, editorDest?.initialCity)
+        } finally {
+            collectorJob.cancel()
+            storeJob.cancelAndJoin()
+        }
+    }
 }
