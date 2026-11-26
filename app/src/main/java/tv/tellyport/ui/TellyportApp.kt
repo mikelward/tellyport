@@ -15,7 +15,7 @@ fun TellyportApp(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
 
     BackHandler(enabled = state.destination != TellyportDestination.Dashboard) {
-        viewModel.navigateToDashboard()
+        viewModel.navigateBack()
     }
 
     TellyportTheme {
@@ -25,14 +25,34 @@ fun TellyportApp(
                     state = state,
                     onActivateProfile = viewModel::activateProfile,
                     onDisconnectAll = viewModel::disconnectAll,
-                    onCreateProfile = viewModel::openCreateProfile,
-                    onEditProfile = viewModel::openEditProfile,
+                    onOpenAppConfigurator = viewModel::openAppConfigurator,
+                    onCreateProfile = { viewModel.openCreateProfile() },
+                    onEditProfile = { viewModel.openEditProfile(it) },
                     onDeleteProfile = viewModel::deleteProfile,
                     onOpenDiagnostics = viewModel::openDiagnostics,
                     onOpenTailscale = viewModel::openTailscaleApp,
                     onOpenDeveloperOptions = { viewModel.openDeveloperOptions() },
                     onCopyAdbCommand = viewModel::copyAdbCommandToClipboard,
                     onRequestLocationPermission = onRequestLocationPermission,
+                    onDismissBanner = viewModel::dismissBannerMessage
+                )
+            }
+
+            TellyportDestination.AppConfigurator -> {
+                AppConfiguratorScreen(
+                    state = state,
+                    onBack = viewModel::navigateToDashboard,
+                    onRefreshApps = viewModel::refreshInstalledApps,
+                    onAssignAppToProfile = viewModel::assignAppToProfile,
+                    onEditProfile = { profile ->
+                        viewModel.openEditProfile(
+                            profile = profile,
+                            returnTo = TellyportDestination.AppConfigurator
+                        )
+                    },
+                    onCreateProfile = {
+                        viewModel.openCreateProfile(returnTo = TellyportDestination.AppConfigurator)
+                    },
                     onDismissBanner = viewModel::dismissBannerMessage
                 )
             }
@@ -66,7 +86,7 @@ fun TellyportApp(
                     installedApps = state.installedApps,
                     currentWgRemoteControlKey = state.wgRemoteControlKey,
                     onSave = viewModel::saveProfile,
-                    onCancel = viewModel::navigateToDashboard
+                    onCancel = viewModel::navigateBack
                 )
             }
         }

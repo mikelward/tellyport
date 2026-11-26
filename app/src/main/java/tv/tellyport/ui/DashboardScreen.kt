@@ -23,6 +23,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Apps
 import androidx.compose.material.icons.rounded.Build
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Edit
@@ -67,6 +68,7 @@ fun DashboardScreen(
     state: TellyportUiState,
     onActivateProfile: (RegionalProfile) -> Unit,
     onDisconnectAll: () -> Unit,
+    onOpenAppConfigurator: () -> Unit,
     onCreateProfile: () -> Unit,
     onEditProfile: (RegionalProfile) -> Unit,
     onDeleteProfile: (RegionalProfile) -> Unit,
@@ -80,6 +82,8 @@ fun DashboardScreen(
     val isAnyActive = state.mockLocationStatus.isActive ||
         state.vpnState.isConnected ||
         state.activeSession != null
+
+    val mappedAppsCount = state.profiles.flatMap { it.mappedPackages }.distinct().size
 
     val activeProfileName = state.activeSession?.let { session ->
         state.profiles.firstOrNull { it.id == session.profileId }?.name
@@ -190,6 +194,11 @@ fun DashboardScreen(
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     TellyportPrimaryButton(
+                        text = if (mappedAppsCount > 0) "Configure Apps ($mappedAppsCount)" else "Configure Apps",
+                        icon = Icons.Rounded.Apps,
+                        onClick = onOpenAppConfigurator
+                    )
+                    TellyportSecondaryButton(
                         text = "New Profile",
                         icon = Icons.Rounded.Add,
                         onClick = onCreateProfile
