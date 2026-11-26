@@ -18,7 +18,7 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission
         android:name="android.permission.ACCESS_MOCK_LOCATION"
-        tools:ignore="MockLocation" />
+        tools:ignore="MockLocation,ProtectedPermissions" />
 
     <!-- Foreground Service (Android 14 / API 34 location FGS) -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
