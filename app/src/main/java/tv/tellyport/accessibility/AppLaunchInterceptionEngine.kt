@@ -1,6 +1,7 @@
 package tv.tellyport.accessibility
 
 import android.view.accessibility.AccessibilityEvent
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
@@ -95,6 +96,12 @@ class AppLaunchInterceptionEngine(
 
         // Handle returning to the Google TV / Android TV Home Launcher.
         if (isHomeLauncher(packageName)) {
+            // Suppress scheduling the Home auto-disconnect timer while an automatic interception
+            // is actively running (interception itself invokes GLOBAL_ACTION_HOME).
+            if (isInterceptionInFlight()) {
+                cancelHomeAutoDisconnectTimer()
+                return InterceptionOutcome.Ignored
+            }
             lastForegroundPackage = packageName
             scheduleHomeAutoDisconnectIfEnabled()
             return InterceptionOutcome.HomeGraceTimerScheduled
@@ -124,25 +131,29 @@ class AppLaunchInterceptionEngine(
             return InterceptionOutcome.Ignored
         }
 
-        // Debounce re-interception right after Tellyport itself relaunched this package.
-        val now = clockElapsedMs()
-        val lastRelaunch = synchronized(recentRelaunchTimestamps) {
-            recentRelaunchTimestamps[packageName]
-        }
-        if (lastRelaunch != null && (now - lastRelaunch) < relaunchDebounceMs) {
-            lastForegroundPackage = packageName
-            return InterceptionOutcome.Debounced
-        }
-
         val myJob = currentCoroutineContext()[Job]
         val jobToSupersede: Job? = synchronized(flightLock) {
-            if (inFlightPackage == packageName && inFlightJob?.isActive == true) {
+            val activeJob = inFlightJob?.takeIf { it.isActive }
+            if (activeJob != null && inFlightPackage == packageName) {
                 return InterceptionOutcome.Debounced
             }
-            val prev = inFlightJob?.takeIf { it.isActive }
+
+            // Only apply relaunch debounce when we are NOT superseding a distinct in-flight app.
+            val supersedingDistinctApp = activeJob != null && inFlightPackage != packageName
+            if (!supersedingDistinctApp) {
+                val now = clockElapsedMs()
+                val lastRelaunch = synchronized(recentRelaunchTimestamps) {
+                    recentRelaunchTimestamps[packageName]
+                }
+                if (lastRelaunch != null && (now - lastRelaunch) < relaunchDebounceMs) {
+                    lastForegroundPackage = packageName
+                    return InterceptionOutcome.Debounced
+                }
+            }
+
             inFlightPackage = packageName
             inFlightJob = myJob
-            prev
+            activeJob
         }
 
         // If another mapped app was being intercepted, cancel that stale activation first so it
@@ -161,14 +172,16 @@ class AppLaunchInterceptionEngine(
                     return@withLock InterceptionOutcome.Debounced
                 }
 
-                // Double-check debounce & satisfaction inside the lock.
-                val lockedNow = clockElapsedMs()
-                val lockedLastRelaunch = synchronized(recentRelaunchTimestamps) {
-                    recentRelaunchTimestamps[packageName]
-                }
-                if (lockedLastRelaunch != null && (lockedNow - lockedLastRelaunch) < relaunchDebounceMs) {
-                    lastForegroundPackage = packageName
-                    return@withLock InterceptionOutcome.Debounced
+                // Double-check debounce inside the lock when not superseding a distinct app.
+                if (jobToSupersede == null) {
+                    val lockedNow = clockElapsedMs()
+                    val lockedLastRelaunch = synchronized(recentRelaunchTimestamps) {
+                        recentRelaunchTimestamps[packageName]
+                    }
+                    if (lockedLastRelaunch != null && (lockedNow - lockedLastRelaunch) < relaunchDebounceMs) {
+                        lastForegroundPackage = packageName
+                        return@withLock InterceptionOutcome.Debounced
+                    }
                 }
 
                 if (coordinator.isProfileCurrentlySatisfied(matchedProfile)) {
@@ -179,6 +192,8 @@ class AppLaunchInterceptionEngine(
                     return@withLock InterceptionOutcome.AlreadySatisfied
                 }
 
+                cancelHomeAutoDisconnectTimer()
+
                 // Notify user on screen before returning home & switching regions.
                 showToast("Connecting to ${matchedProfile.name}...")
 
@@ -188,27 +203,38 @@ class AppLaunchInterceptionEngine(
                 // 2. Force-stop target app (Shizuku IActivityManager.forceStopPackage -> fallback killBackgroundProcesses).
                 forceStopper.forceStop(packageName)
 
-                // 3. Record debounce timestamp BEFORE relaunch so our own relaunch event is ignored.
+                // 3. Record debounce timestamp BEFORE relaunch so our own relaunch event is ignored,
+                //    but invalidate it if this activation is cancelled or never relaunches the app.
                 synchronized(recentRelaunchTimestamps) {
                     recentRelaunchTimestamps[packageName] = clockElapsedMs()
                 }
 
                 // 4. Reconcile VPN + start/update MockLocationService + cleanly relaunch with CLEAR_TASK.
-                val progress = coordinator.activate(
-                    profile = matchedProfile,
-                    targetPackageOverride = packageName,
-                    clearTaskOnLaunch = true
-                )
-
-                // Refresh debounce timestamp after activation finishes so immediate window transitions are debounced.
-                synchronized(recentRelaunchTimestamps) {
-                    recentRelaunchTimestamps[packageName] = clockElapsedMs()
+                val progress = try {
+                    coordinator.activate(
+                        profile = matchedProfile,
+                        targetPackageOverride = packageName,
+                        clearTaskOnLaunch = true
+                    )
+                } catch (ce: CancellationException) {
+                    synchronized(recentRelaunchTimestamps) {
+                        recentRelaunchTimestamps.remove(packageName)
+                    }
+                    throw ce
                 }
 
+                cancelHomeAutoDisconnectTimer()
+
                 if (progress is ActivationProgress.Warning) {
+                    synchronized(recentRelaunchTimestamps) {
+                        recentRelaunchTimestamps.remove(packageName)
+                    }
                     showToast(progress.message)
                     lastForegroundPackage = null
                 } else {
+                    synchronized(recentRelaunchTimestamps) {
+                        recentRelaunchTimestamps[packageName] = clockElapsedMs()
+                    }
                     lastForegroundPackage = packageName
                 }
 
@@ -234,7 +260,15 @@ class AppLaunchInterceptionEngine(
         homeDisconnectJob = null
     }
 
+    private fun isInterceptionInFlight(): Boolean = synchronized(flightLock) {
+        inFlightJob?.isActive == true
+    }
+
     private suspend fun scheduleHomeAutoDisconnectIfEnabled() {
+        if (isInterceptionInFlight()) {
+            cancelHomeAutoDisconnectTimer()
+            return
+        }
         val settings = autoDisconnectSettingsProvider()
         if (!settings.enabled) {
             cancelHomeAutoDisconnectTimer()
@@ -251,7 +285,7 @@ class AppLaunchInterceptionEngine(
         val delayMs = settings.gracePeriodSeconds.coerceAtLeast(1) * 1_000L
         homeDisconnectJob = scope.launch {
             delay(delayMs)
-            if (hasActiveSessionOrVpn()) {
+            if (!isInterceptionInFlight() && hasActiveSessionOrVpn()) {
                 coordinator.deactivateAll()
                 _lastInterceptedSummary.value = "Auto-disconnected after ${settings.gracePeriodSeconds}s on Home Launcher"
             }
