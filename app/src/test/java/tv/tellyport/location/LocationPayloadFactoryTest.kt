@@ -124,4 +124,51 @@ class LocationPayloadFactoryTest {
             MockLocationPermissionChecker.buildAdbMockLocationCommand("tv.tellyport")
         )
     }
+
+    @Test
+    fun recordFixIfSessionMatches_rejectsStaleWorkerUpdatesForReplacedSession() {
+        try {
+            val oldSession = MockLocationState.nextSessionId()
+            val newSession = MockLocationState.nextSessionId()
+            assertTrue(newSession > oldSession)
+
+            MockLocationState.update {
+                MockLocationStatus(
+                    isActive = true,
+                    sessionId = newSession,
+                    activeProfileId = "uk",
+                    activeProfileName = "UK",
+                    configuredLatitude = 51.5074,
+                    configuredLongitude = -0.1278,
+                    injectionCount = 0L
+                )
+            }
+
+            // A stale worker from oldSession attempting to publish US coordinates must be rejected.
+            val staleApplied = MockLocationState.recordFixIfSessionMatches(
+                sessionId = oldSession,
+                latitude = 40.7128,
+                longitude = -74.0060,
+                epochMs = 1_000L,
+                injectionCount = 5L
+            )
+            assertEquals(false, staleApplied)
+            assertEquals(0L, MockLocationState.status.value.injectionCount)
+            assertEquals(null, MockLocationState.status.value.lastInjectedLatitude)
+
+            // The active worker for newSession publishes cleanly.
+            val freshApplied = MockLocationState.recordFixIfSessionMatches(
+                sessionId = newSession,
+                latitude = 51.5074,
+                longitude = -0.1278,
+                epochMs = 2_000L,
+                injectionCount = 1L
+            )
+            assertEquals(true, freshApplied)
+            assertEquals(1L, MockLocationState.status.value.injectionCount)
+            assertEquals(51.5074, MockLocationState.status.value.lastInjectedLatitude!!, 0.0001)
+        } finally {
+            MockLocationState.markInactive()
+        }
+    }
 }

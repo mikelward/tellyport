@@ -2,13 +2,13 @@ package tv.tellyport.vpn
 
 import tv.tellyport.data.RegionalProfile
 import tv.tellyport.data.VpnBackend
+import tv.tellyport.location.MockLocationState
 import tv.tellyport.location.MockLocationStatus
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
-import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Step-by-step progress reported during profile activation.
@@ -38,12 +38,11 @@ class ProfileActivationCoordinator(
     private val stopMockLocation: () -> Unit,
     private val wgRemoteControlKeyProvider: () -> String = { "" },
     private val vpnWaitTimeoutMs: Long = DEFAULT_VPN_WAIT_TIMEOUT_MS,
-    private val mockLocationWaitTimeoutMs: Long = DEFAULT_MOCK_LOCATION_WAIT_TIMEOUT_MS
+    private val mockLocationWaitTimeoutMs: Long = DEFAULT_MOCK_LOCATION_WAIT_TIMEOUT_MS,
+    private val nextSessionId: () -> Long = MockLocationState::nextSessionId
 ) {
     private val _progress = MutableStateFlow<ActivationProgress>(ActivationProgress.Idle)
     val progress: StateFlow<ActivationProgress> = _progress.asStateFlow()
-
-    private val sessionIdGenerator = AtomicLong(0L)
 
     private var activeVpnBackend: VpnBackend? = null
     private var activeWgTunnelName: String? = null
@@ -68,7 +67,7 @@ class ProfileActivationCoordinator(
             return warning
         }
 
-        val sessionId = sessionIdGenerator.incrementAndGet()
+        val sessionId = nextSessionId()
 
         // Fast path for profiles that do not use a VPN backend: still wait for the first mock fix.
         if (profile.vpnBackend == VpnBackend.NONE) {

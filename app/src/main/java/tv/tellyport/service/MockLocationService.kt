@@ -27,10 +27,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Android Foreground Service (`foregroundServiceType="location"`) that registers test providers
@@ -41,6 +43,7 @@ class MockLocationService : Service() {
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val payloadFactory = LocationPayloadFactory()
+    private val activeSessionId = AtomicLong(0L)
 
     private var injectionJob: Job? = null
     private var locationManager: LocationManager? = null
@@ -127,9 +130,12 @@ class MockLocationService : Service() {
         altitude: Double,
         accuracyMeters: Float
     ) {
-        injectionJob?.cancel()
+        activeSessionId.set(sessionId)
+        val previousJob = injectionJob
         val manager = locationManager
         if (manager == null) {
+            previousJob?.cancel()
+            injectionJob = null
             MockLocationState.markInactive(
                 errorMessage = "LocationManager unavailable on this device.",
                 failedSessionId = sessionId
@@ -138,57 +144,69 @@ class MockLocationService : Service() {
             return
         }
 
-        val gpsOk: Boolean
-        val networkOk: Boolean
-        try {
-            gpsOk = registerTestProvider(manager, LocationManager.GPS_PROVIDER)
-            networkOk = registerTestProvider(manager, LocationManager.NETWORK_PROVIDER)
-        } catch (sec: SecurityException) {
-            MockLocationState.markInactive(
-                errorMessage = "Tellyport is not selected as the Mock Location app in Developer Options.",
-                mockPermissionDenied = true,
-                failedSessionId = sessionId
-            )
-            stopSpoofingAndSelf(preserveErrorState = true)
-            return
-        }
-
-        if (!gpsOk && !networkOk) {
-            MockLocationState.markInactive(
-                errorMessage = "Unable to register GPS or Network mock location providers.",
-                failedSessionId = sessionId
-            )
-            stopSpoofingAndSelf(preserveErrorState = true)
-            return
-        }
-
-        MockLocationState.update {
-            MockLocationStatus(
-                isActive = true,
-                sessionId = sessionId,
-                failedSessionId = null,
-                activeProfileId = profileId,
-                activeProfileName = profileName,
-                configuredLatitude = latitude,
-                configuredLongitude = longitude,
-                configuredAltitude = altitude,
-                gpsProviderRegistered = gpsOk,
-                networkProviderRegistered = networkOk,
-                injectionCount = 0L,
-                mockPermissionDenied = false,
-                errorMessage = null
-            )
-        }
-
         injectionJob = serviceScope.launch {
+            // Wait for any previous worker iteration to exit completely before replacing providers
+            // or publishing the new session state so stale coordinates can never leak into this session.
+            previousJob?.cancelAndJoin()
+            if (!isActive || activeSessionId.get() != sessionId) return@launch
+
+            val gpsOk: Boolean
+            val networkOk: Boolean
+            try {
+                gpsOk = registerTestProvider(manager, LocationManager.GPS_PROVIDER)
+                networkOk = registerTestProvider(manager, LocationManager.NETWORK_PROVIDER)
+            } catch (sec: SecurityException) {
+                if (activeSessionId.get() == sessionId) {
+                    MockLocationState.markInactive(
+                        errorMessage = "Tellyport is not selected as the Mock Location app in Developer Options.",
+                        mockPermissionDenied = true,
+                        failedSessionId = sessionId
+                    )
+                    stopSpoofingAndSelf(preserveErrorState = true)
+                }
+                return@launch
+            }
+
+            if (!gpsOk && !networkOk) {
+                if (activeSessionId.get() == sessionId) {
+                    MockLocationState.markInactive(
+                        errorMessage = "Unable to register GPS or Network mock location providers.",
+                        failedSessionId = sessionId
+                    )
+                    stopSpoofingAndSelf(preserveErrorState = true)
+                }
+                return@launch
+            }
+
+            if (!isActive || activeSessionId.get() != sessionId) return@launch
+
+            MockLocationState.update {
+                MockLocationStatus(
+                    isActive = true,
+                    sessionId = sessionId,
+                    failedSessionId = null,
+                    activeProfileId = profileId,
+                    activeProfileName = profileName,
+                    configuredLatitude = latitude,
+                    configuredLongitude = longitude,
+                    configuredAltitude = altitude,
+                    gpsProviderRegistered = gpsOk,
+                    networkProviderRegistered = networkOk,
+                    injectionCount = 0L,
+                    mockPermissionDenied = false,
+                    errorMessage = null
+                )
+            }
+
             var count = 0L
-            while (isActive) {
+            while (isActive && activeSessionId.get() == sessionId) {
                 try {
                     var lastLat = latitude
                     var lastLon = longitude
                     var lastEpoch = System.currentTimeMillis()
 
                     if (gpsOk) {
+                        if (!isActive || activeSessionId.get() != sessionId) break
                         val gpsLocation = payloadFactory.createLocation(
                             provider = LocationManager.GPS_PROVIDER,
                             baseLatitude = latitude,
@@ -203,6 +221,7 @@ class MockLocationService : Service() {
                     }
 
                     if (networkOk) {
+                        if (!isActive || activeSessionId.get() != sessionId) break
                         val networkLocation = payloadFactory.createLocation(
                             provider = LocationManager.NETWORK_PROVIDER,
                             baseLatitude = latitude,
@@ -221,33 +240,39 @@ class MockLocationService : Service() {
                         }
                     }
 
+                    if (!isActive || activeSessionId.get() != sessionId) break
                     count += 1
-                    MockLocationState.update { current ->
-                        current.copy(
-                            isActive = true,
-                            lastInjectedLatitude = lastLat,
-                            lastInjectedLongitude = lastLon,
-                            lastUpdatedEpochMs = lastEpoch,
-                            injectionCount = count,
-                            mockPermissionDenied = false,
-                            errorMessage = null
-                        )
-                    }
+                    val recorded = MockLocationState.recordFixIfSessionMatches(
+                        sessionId = sessionId,
+                        latitude = lastLat,
+                        longitude = lastLon,
+                        epochMs = lastEpoch,
+                        injectionCount = count
+                    )
+                    if (!recorded) break
 
                     if (count == 1L || count % 5L == 0L) {
                         updateNotification(profileName, lastLat, lastLon)
                     }
                 } catch (sec: SecurityException) {
-                    MockLocationState.markInactive(
-                        errorMessage = "Mock location permission revoked: ${sec.message}",
-                        mockPermissionDenied = true,
-                        failedSessionId = sessionId
-                    )
-                    stopSpoofingAndSelf(preserveErrorState = true)
+                    if (activeSessionId.get() == sessionId) {
+                        MockLocationState.markInactive(
+                            errorMessage = "Mock location permission revoked: ${sec.message}",
+                            mockPermissionDenied = true,
+                            failedSessionId = sessionId
+                        )
+                        stopSpoofingAndSelf(preserveErrorState = true)
+                    }
                     break
                 } catch (ex: Exception) {
-                    MockLocationState.update { current ->
-                        current.copy(errorMessage = "Location push error: ${ex.message}")
+                    if (activeSessionId.get() == sessionId) {
+                        MockLocationState.update { current ->
+                            if (current.sessionId != sessionId) {
+                                current
+                            } else {
+                                current.copy(errorMessage = "Location push error: ${ex.message}")
+                            }
+                        }
                     }
                 }
 
@@ -328,6 +353,7 @@ class MockLocationService : Service() {
     }
 
     private fun stopSpoofingAndSelf(preserveErrorState: Boolean = false) {
+        activeSessionId.set(0L)
         injectionJob?.cancel()
         injectionJob = null
         removeAllTestProviders()
@@ -339,6 +365,7 @@ class MockLocationService : Service() {
     }
 
     override fun onDestroy() {
+        activeSessionId.set(0L)
         injectionJob?.cancel()
         injectionJob = null
         removeAllTestProviders()

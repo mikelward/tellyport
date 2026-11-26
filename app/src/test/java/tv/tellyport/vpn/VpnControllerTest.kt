@@ -625,4 +625,77 @@ class VpnControllerTest {
         assertTrue(result is ActivationProgress.Warning)
         assertTrue(dispatcher.startedActivities.isEmpty())
     }
+
+    @Test
+    fun newCoordinatorInstance_generatesUniqueSessionIdAndWaitsForFreshFix() = runTest {
+        val dispatcher = RecordingIntentDispatcher()
+        val controller = VpnController(dispatcher)
+        val vpnState = MutableStateFlow(VpnConnectionState(isConnected = false))
+        val mockStatus = MutableStateFlow(MockLocationStatus())
+
+        val profileV1 = RegionalProfile(
+            id = "uk-none",
+            name = "UK Direct",
+            regionCode = "UK",
+            latitude = 51.5074,
+            longitude = -0.1278,
+            vpnBackend = VpnBackend.NONE,
+            targetAppPackage = "uk.co.bbc.iplayer",
+            autoLaunchApp = true
+        )
+
+        var firstSessionId = -1L
+        val coordinator1 = ProfileActivationCoordinator(
+            vpnController = controller,
+            vpnStateFlow = vpnState,
+            mockLocationStatusFlow = mockStatus,
+            startMockLocation = { profile, sid ->
+                firstSessionId = sid
+                mockStatus.value = MockLocationStatus(
+                    isActive = true,
+                    sessionId = sid,
+                    activeProfileId = profile.id,
+                    activeProfileName = profile.name,
+                    lastInjectedLatitude = profile.latitude,
+                    lastInjectedLongitude = profile.longitude,
+                    injectionCount = 1L
+                )
+            },
+            stopMockLocation = {}
+        )
+        assertTrue(coordinator1.activate(profileV1) is ActivationProgress.Active)
+        assertEquals(1, dispatcher.startedActivities.size)
+
+        // Simulate Activity/ViewModel recreation while MockLocationService is still running
+        // with firstSessionId and the user re-activates the edited profile.
+        val profileV2 = profileV1.copy(latitude = 53.4808, longitude = -2.2426)
+        var secondSessionId = -1L
+        val coordinator2 = ProfileActivationCoordinator(
+            vpnController = controller,
+            vpnStateFlow = vpnState,
+            mockLocationStatusFlow = mockStatus,
+            startMockLocation = { _, sid -> secondSessionId = sid },
+            stopMockLocation = {}
+        )
+
+        val deferred = async { coordinator2.activate(profileV2) }
+        advanceTimeBy(500L)
+
+        // New coordinator must have a distinct session ID and must NOT accept coordinator1's fix.
+        assertTrue(secondSessionId > firstSessionId)
+        assertEquals(1, dispatcher.startedActivities.size)
+
+        // Once the service injects fix #1 for secondSessionId, launch proceeds.
+        mockStatus.value = MockLocationStatus(
+            isActive = true,
+            sessionId = secondSessionId,
+            activeProfileId = profileV2.id,
+            activeProfileName = profileV2.name,
+            lastInjectedLatitude = profileV2.latitude,
+            lastInjectedLongitude = profileV2.longitude,
+            injectionCount = 1L
+        )
+        assertTrue(deferred.await() is ActivationProgress.Active)
+        assertEquals(2, dispatcher.startedActivities.size)
+    }
 }
