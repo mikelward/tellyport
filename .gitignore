@@ -14,3 +14,7 @@
 *.dex
 *.class
 *.log
+*.keystore
+*.jks
+release.keystore
+release.keystore.b64
