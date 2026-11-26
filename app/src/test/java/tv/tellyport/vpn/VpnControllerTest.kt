@@ -698,4 +698,58 @@ class VpnControllerTest {
         assertTrue(deferred.await() is ActivationProgress.Active)
         assertEquals(2, dispatcher.startedActivities.size)
     }
+
+    @Test
+    fun activationCoordinator_whenVpnDropsDuringMockLocationWait_skipsAppLaunchAndWarns() = runTest {
+        val dispatcher = RecordingIntentDispatcher()
+        val controller = VpnController(dispatcher)
+        val vpnState = MutableStateFlow(VpnConnectionState(isConnected = false))
+        val mockStatus = MutableStateFlow(MockLocationStatus())
+        var capturedSessionId = -1L
+
+        val coordinator = ProfileActivationCoordinator(
+            vpnController = controller,
+            vpnStateFlow = vpnState,
+            mockLocationStatusFlow = mockStatus,
+            startMockLocation = { _, sid -> capturedSessionId = sid },
+            stopMockLocation = {},
+            vpnWaitTimeoutMs = 8_000L,
+            mockLocationWaitTimeoutMs = 5_000L
+        )
+
+        val profile = RegionalProfile(
+            id = "us-drop",
+            name = "US Drop",
+            regionCode = "US",
+            latitude = 40.7128,
+            longitude = -74.0060,
+            vpnBackend = VpnBackend.TAILSCALE,
+            targetAppPackage = "com.cbs.ott",
+            autoLaunchApp = true
+        )
+
+        val deferred = async { coordinator.activate(profile) }
+        runCurrent()
+
+        // VPN connects first while mock location is still starting up.
+        vpnState.value = VpnConnectionState(isConnected = true, networkHandle = 777L)
+        advanceTimeBy(300L)
+
+        // VPN drops BEFORE the first mock fix arrives!
+        vpnState.value = VpnConnectionState(isConnected = false, networkHandle = null)
+        advanceTimeBy(100L)
+
+        // Now the first mock fix arrives.
+        mockStatus.value = MockLocationStatus(
+            isActive = true,
+            sessionId = capturedSessionId,
+            activeProfileId = profile.id,
+            activeProfileName = profile.name,
+            injectionCount = 1L
+        )
+
+        val result = deferred.await()
+        assertTrue(result is ActivationProgress.Warning)
+        assertTrue(dispatcher.startedActivities.isEmpty())
+    }
 }
