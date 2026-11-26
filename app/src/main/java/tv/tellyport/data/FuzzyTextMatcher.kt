@@ -45,15 +45,19 @@ object FuzzyTextMatcher {
             .replace('ß', 's')
     }
 
+    private fun lowercasePreservingLength(input: String): String {
+        return CharArray(input.length) { idx -> input[idx].lowercaseChar() }.concatToString()
+    }
+
     /**
      * Scores how well [rawToken] matches [candidate], returning `null` if there is no match.
      * Higher scores represent stronger matches.
      */
     fun scoreField(candidate: String, rawToken: String): Int? {
-        val token = foldDiacritics(rawToken).lowercase()
+        val token = lowercasePreservingLength(foldDiacritics(rawToken))
         if (token.isEmpty() || candidate.isEmpty()) return null
         val folded = foldDiacritics(candidate)
-        val lower = folded.lowercase()
+        val lower = lowercasePreservingLength(folded)
 
         // 1. Exact match
         if (lower == token) return 1_000

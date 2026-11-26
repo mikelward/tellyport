@@ -289,6 +289,7 @@ class TellyportViewModel(
         viewModelScope.launch {
             pendingJob?.cancelAndJoin()
             coordinator.cancelActiveActivation()
+            coordinator.resetProgressToIdle()
             val sessionId = MockLocationState.nextSessionId()
             startQuickMockLocation(city, sessionId)
             _destination.value = TellyportDestination.Dashboard

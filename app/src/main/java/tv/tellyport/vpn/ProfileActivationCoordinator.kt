@@ -99,6 +99,16 @@ class ProfileActivationCoordinator(
     }
 
     /**
+     * Resets [progress] to [ActivationProgress.Idle] under [activationMutex] so a superseded
+     * or cancelled activation does not leave stale `InProgress` / `Active` / `Warning` UI state.
+     */
+    suspend fun resetProgressToIdle() {
+        activationMutex.withLock {
+            _progress.value = ActivationProgress.Idle
+        }
+    }
+
+    /**
      * Checks whether [profile] is already satisfied right now (both VPN and mock location),
      * used by [tv.tellyport.accessibility.AppLaunchInterceptionEngine] to allow normal app
      * launches when the region is already active.
