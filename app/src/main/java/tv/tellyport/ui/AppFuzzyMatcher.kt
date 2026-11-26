@@ -149,10 +149,14 @@ object AppFuzzyMatcher {
         return totalScore
     }
 
+    private fun lowercasePreservingLength(input: String): String {
+        return CharArray(input.length) { idx -> input[idx].lowercaseChar() }.concatToString()
+    }
+
     internal fun scoreField(candidate: String, rawToken: String): Int? {
-        val token = rawToken.lowercase()
+        val token = lowercasePreservingLength(rawToken)
         if (token.isEmpty() || candidate.isEmpty()) return null
-        val lower = candidate.lowercase()
+        val lower = lowercasePreservingLength(candidate)
 
         // 1. Exact match
         if (lower == token) return 1_000
