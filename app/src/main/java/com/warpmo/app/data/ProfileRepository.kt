@@ -68,13 +68,28 @@ class ProfileRepository(
     }
 
     /**
+     * Emits the persisted WG Tunnel remote-control authentication key.
+     */
+    val wgRemoteControlKey: Flow<String> = dataStore.data.map { it.wgRemoteControlKey }
+
+    /**
+     * Persists the WG Tunnel remote-control authentication key (copied from WG Tunnel Settings).
+     */
+    suspend fun setWgRemoteControlKey(key: String) {
+        val trimmed = key.trim()
+        dataStore.updateData { current ->
+            current.copy(wgRemoteControlKey = trimmed)
+        }
+    }
+
+    /**
      * Ensures the default profiles are written to disk on first launch so edits/deletions
      * operate on persisted state.
      */
     suspend fun ensureSeeded() {
         dataStore.updateData { current ->
             if (!current.initialized) {
-                ProfileStore(
+                current.copy(
                     schemaVersion = 1,
                     initialized = true,
                     profiles = ProfilePresets.defaultProfiles()

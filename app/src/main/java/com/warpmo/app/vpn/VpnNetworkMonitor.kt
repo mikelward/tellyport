@@ -1,10 +1,14 @@
 package com.warpmo.app.vpn
 
 import android.content.Context
+import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
+import android.os.Build
+import android.os.Process
+import com.warpmo.app.data.VpnBackend
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -15,7 +19,9 @@ import kotlinx.coroutines.flow.asStateFlow
 data class VpnConnectionState(
     val isConnected: Boolean = false,
     val hasInternetCapability: Boolean = false,
-    val interfaceName: String? = null
+    val interfaceName: String? = null,
+    val networkHandle: Long? = null,
+    val ownerBackend: VpnBackend? = null
 )
 
 /**
@@ -25,8 +31,9 @@ data class VpnConnectionState(
 class VpnNetworkMonitor(
     context: Context
 ) {
+    private val appContext = context.applicationContext
     private val connectivityManager =
-        context.applicationContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+        appContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
 
     private val _state = MutableStateFlow(VpnConnectionState())
     val state: StateFlow<VpnConnectionState> = _state.asStateFlow()
@@ -112,10 +119,32 @@ class VpnNetworkMonitor(
             _state.value = VpnConnectionState(
                 isConnected = true,
                 hasInternetCapability = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true,
-                interfaceName = linkProps?.interfaceName
+                interfaceName = linkProps?.interfaceName,
+                networkHandle = vpnNetwork.networkHandle,
+                ownerBackend = resolveOwnerBackend(caps)
             )
         } else {
             _state.value = VpnConnectionState(isConnected = false)
+        }
+    }
+
+    private fun resolveOwnerBackend(caps: NetworkCapabilities?): VpnBackend? {
+        if (caps == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
+        val ownerUid = caps.ownerUid
+        if (ownerUid == Process.INVALID_UID) return null
+
+        return when (ownerUid) {
+            getPackageUid(VpnController.TAILSCALE_PACKAGE) -> VpnBackend.TAILSCALE
+            getPackageUid(VpnController.WG_TUNNEL_PACKAGE) -> VpnBackend.WG_TUNNEL
+            else -> null
+        }
+    }
+
+    private fun getPackageUid(packageName: String): Int? {
+        return try {
+            appContext.packageManager.getApplicationInfo(packageName, 0).uid
+        } catch (_: PackageManager.NameNotFoundException) {
+            null
         }
     }
 }

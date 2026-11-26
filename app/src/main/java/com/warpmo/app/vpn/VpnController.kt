@@ -43,7 +43,7 @@ class AndroidIntentDispatcher(
 
 /**
  * Coordinates VPN connect/disconnect broadcasts for Tailscale and WG Tunnel,
- * plus fallback launching of the Tailscale UI to select/verify an Exit Node.
+ * plus fallback launching of the Tailscale / WG Tunnel UIs.
  */
 class VpnController(
     private val dispatcher: IntentDispatcher
@@ -71,11 +71,20 @@ class VpnController(
     }
 
     /**
-     * Builds the broadcast [Intent] to connect a WG Tunnel (e.g., UniFi WireGuard tunnel).
+     * Builds the explicit authenticated broadcast [Intent] to start a WG Tunnel tunnel
+     * per https://wgtunnel.com/docs/android/settings/#remote-app-control-with-intents.
+     *
+     * Returns `null` if [remoteControlKey] is blank because WG Tunnel rejects unauthenticated
+     * remote-control requests.
      */
-    fun buildWgTunnelConnectIntent(tunnelName: String?): Intent {
+    fun buildWgTunnelConnectIntent(tunnelName: String?, remoteControlKey: String?): Intent? {
+        val trimmedKey = remoteControlKey?.trim().orEmpty()
+        if (trimmedKey.isEmpty()) return null
+
         return Intent(ACTION_WG_TUNNEL_CONNECT).apply {
             `package` = WG_TUNNEL_PACKAGE
+            component = ComponentName(WG_TUNNEL_PACKAGE, WG_TUNNEL_RECEIVER)
+            putExtra(EXTRA_WG_REMOTE_KEY, trimmedKey)
             if (!tunnelName.isNullOrBlank()) {
                 putExtra(EXTRA_WG_TUNNEL_NAME, tunnelName.trim())
             }
@@ -83,11 +92,19 @@ class VpnController(
     }
 
     /**
-     * Builds the broadcast [Intent] to disconnect a WG Tunnel.
+     * Builds the explicit authenticated broadcast [Intent] to stop a WG Tunnel tunnel.
+     *
+     * Returns `null` if [remoteControlKey] is blank because WG Tunnel rejects unauthenticated
+     * remote-control requests.
      */
-    fun buildWgTunnelDisconnectIntent(tunnelName: String?): Intent {
+    fun buildWgTunnelDisconnectIntent(tunnelName: String?, remoteControlKey: String?): Intent? {
+        val trimmedKey = remoteControlKey?.trim().orEmpty()
+        if (trimmedKey.isEmpty()) return null
+
         return Intent(ACTION_WG_TUNNEL_DISCONNECT).apply {
             `package` = WG_TUNNEL_PACKAGE
+            component = ComponentName(WG_TUNNEL_PACKAGE, WG_TUNNEL_RECEIVER)
+            putExtra(EXTRA_WG_REMOTE_KEY, trimmedKey)
             if (!tunnelName.isNullOrBlank()) {
                 putExtra(EXTRA_WG_TUNNEL_NAME, tunnelName.trim())
             }
@@ -95,33 +112,47 @@ class VpnController(
     }
 
     /**
-     * Builds the connect broadcast [Intent] for the given [backend], or null for [VpnBackend.NONE].
+     * Builds the connect broadcast [Intent] for the given [backend], or null for [VpnBackend.NONE]
+     * or when [VpnBackend.WG_TUNNEL] lacks a configured [wgRemoteControlKey].
      */
-    fun buildConnectIntent(backend: VpnBackend, tunnelOrNodeName: String? = null): Intent? {
+    fun buildConnectIntent(
+        backend: VpnBackend,
+        tunnelOrNodeName: String? = null,
+        wgRemoteControlKey: String? = null
+    ): Intent? {
         return when (backend) {
             VpnBackend.TAILSCALE -> buildTailscaleConnectIntent()
-            VpnBackend.WG_TUNNEL -> buildWgTunnelConnectIntent(tunnelOrNodeName)
+            VpnBackend.WG_TUNNEL -> buildWgTunnelConnectIntent(tunnelOrNodeName, wgRemoteControlKey)
             VpnBackend.NONE -> null
         }
     }
 
     /**
-     * Builds the disconnect broadcast [Intent] for the given [backend], or null for [VpnBackend.NONE].
+     * Builds the disconnect broadcast [Intent] for the given [backend], or null for [VpnBackend.NONE]
+     * or when [VpnBackend.WG_TUNNEL] lacks a configured [wgRemoteControlKey].
      */
-    fun buildDisconnectIntent(backend: VpnBackend, tunnelOrNodeName: String? = null): Intent? {
+    fun buildDisconnectIntent(
+        backend: VpnBackend,
+        tunnelOrNodeName: String? = null,
+        wgRemoteControlKey: String? = null
+    ): Intent? {
         return when (backend) {
             VpnBackend.TAILSCALE -> buildTailscaleDisconnectIntent()
-            VpnBackend.WG_TUNNEL -> buildWgTunnelDisconnectIntent(tunnelOrNodeName)
+            VpnBackend.WG_TUNNEL -> buildWgTunnelDisconnectIntent(tunnelOrNodeName, wgRemoteControlKey)
             VpnBackend.NONE -> null
         }
     }
 
     /**
      * Sends the appropriate VPN connect broadcast for [profile]. Returns the dispatched [Intent],
-     * or null when [RegionalProfile.vpnBackend] is [VpnBackend.NONE].
+     * or null when [RegionalProfile.vpnBackend] is [VpnBackend.NONE] or missing required WG key.
      */
-    fun connect(profile: RegionalProfile): Intent? {
-        val intent = buildConnectIntent(profile.vpnBackend, profile.vpnTunnelOrNodeName)
+    fun connect(profile: RegionalProfile, wgRemoteControlKey: String? = null): Intent? {
+        val intent = buildConnectIntent(
+            backend = profile.vpnBackend,
+            tunnelOrNodeName = profile.vpnTunnelOrNodeName,
+            wgRemoteControlKey = wgRemoteControlKey
+        )
         if (intent != null) {
             dispatcher.sendBroadcast(intent)
         }
@@ -131,8 +162,12 @@ class VpnController(
     /**
      * Sends the disconnect broadcast for a specific [backend] and optional [tunnelOrNodeName].
      */
-    fun disconnect(backend: VpnBackend, tunnelOrNodeName: String? = null): Intent? {
-        val intent = buildDisconnectIntent(backend, tunnelOrNodeName)
+    fun disconnect(
+        backend: VpnBackend,
+        tunnelOrNodeName: String? = null,
+        wgRemoteControlKey: String? = null
+    ): Intent? {
+        val intent = buildDisconnectIntent(backend, tunnelOrNodeName, wgRemoteControlKey)
         if (intent != null) {
             dispatcher.sendBroadcast(intent)
         }
@@ -140,14 +175,17 @@ class VpnController(
     }
 
     /**
-     * Sends disconnect broadcasts for both Tailscale and WG Tunnel (with optional active tunnel name)
-     * when the user clicks "Disconnect All".
+     * Sends disconnect broadcasts for Tailscale and (when [wgRemoteControlKey] is configured)
+     * WG Tunnel when the user triggers "Disconnect All".
      */
-    fun disconnectAll(activeWgTunnelName: String? = null): List<Intent> {
-        val intents = listOf(
-            buildTailscaleDisconnectIntent(),
-            buildWgTunnelDisconnectIntent(activeWgTunnelName)
-        )
+    fun disconnectAll(
+        activeWgTunnelName: String? = null,
+        wgRemoteControlKey: String? = null
+    ): List<Intent> {
+        val intents = buildList {
+            add(buildTailscaleDisconnectIntent())
+            buildWgTunnelDisconnectIntent(activeWgTunnelName, wgRemoteControlKey)?.let { add(it) }
+        }
         intents.forEach { dispatcher.sendBroadcast(it) }
         return intents
     }
@@ -157,6 +195,14 @@ class VpnController(
      */
     fun openTailscaleApp(): Boolean {
         val intent = dispatcher.resolveLaunchIntent(TAILSCALE_PACKAGE) ?: return false
+        return dispatcher.startActivity(intent)
+    }
+
+    /**
+     * Opens the WG Tunnel app directly so the user can enable Remote App Control and copy the key.
+     */
+    fun openWgTunnelApp(): Boolean {
+        val intent = dispatcher.resolveLaunchIntent(WG_TUNNEL_PACKAGE) ?: return false
         return dispatcher.startActivity(intent)
     }
 
@@ -177,8 +223,11 @@ class VpnController(
         const val ACTION_TAILSCALE_DISCONNECT = "com.tailscale.ipn.DISCONNECT_VPN"
 
         const val WG_TUNNEL_PACKAGE = "com.zaneschepke.wireguardautotunnel"
-        const val ACTION_WG_TUNNEL_CONNECT = "com.zaneschepke.wireguardautotunnel.action.CONNECT"
-        const val ACTION_WG_TUNNEL_DISCONNECT = "com.zaneschepke.wireguardautotunnel.action.DISCONNECT"
-        const val EXTRA_WG_TUNNEL_NAME = "tunnel_name"
+        const val WG_TUNNEL_RECEIVER =
+            "com.zaneschepke.wireguardautotunnel.core.broadcast.RemoteControlReceiver"
+        const val ACTION_WG_TUNNEL_CONNECT = "com.zaneschepke.wireguardautotunnel.START_TUNNEL"
+        const val ACTION_WG_TUNNEL_DISCONNECT = "com.zaneschepke.wireguardautotunnel.STOP_TUNNEL"
+        const val EXTRA_WG_TUNNEL_NAME = "tunnelName"
+        const val EXTRA_WG_REMOTE_KEY = "key"
     }
 }

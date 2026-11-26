@@ -142,10 +142,37 @@ class ProfileRepositoryTest {
     }
 
     @Test
+    fun wgRemoteControlKey_persistsAcrossRepositoryInstances() = runTest {
+        val fileName = "wg_key_store.json"
+        val job1 = SupervisorJob()
+        val scope1 = CoroutineScope(job1 + Dispatchers.IO)
+        try {
+            val repo1 = createRepository(fileName, scope1)
+            repo1.ensureSeeded()
+            assertEquals("", repo1.wgRemoteControlKey.first())
+
+            repo1.setWgRemoteControlKey("  my-wg-secret-key  ")
+            assertEquals("my-wg-secret-key", repo1.wgRemoteControlKey.first())
+        } finally {
+            job1.cancelAndJoin()
+        }
+
+        val job2 = SupervisorJob()
+        val scope2 = CoroutineScope(job2 + Dispatchers.IO)
+        try {
+            val repo2 = createRepository(fileName, scope2)
+            assertEquals("my-wg-secret-key", repo2.wgRemoteControlKey.first())
+        } finally {
+            job2.cancelAndJoin()
+        }
+    }
+
+    @Test
     fun profileStoreSerializer_roundTripsNullableFieldsAndRejectsCorruptJson() = runTest {
         val original = ProfileStore(
             schemaVersion = 1,
             initialized = true,
+            wgRemoteControlKey = "key-xyz-999",
             profiles = listOf(
                 RegionalProfile(
                     id = "p-1",
@@ -168,6 +195,7 @@ class ProfileRepositoryTest {
         val decoded = ProfileStoreSerializer.readFrom(ByteArrayInputStream(output.toByteArray()))
 
         assertEquals(original, decoded)
+        assertEquals("key-xyz-999", decoded.wgRemoteControlKey)
         assertNull(decoded.profiles.single().vpnTunnelOrNodeName)
         assertNull(decoded.profiles.single().targetAppPackage)
 
