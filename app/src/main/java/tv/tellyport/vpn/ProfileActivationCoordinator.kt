@@ -100,12 +100,20 @@ class ProfileActivationCoordinator(
             }
             vpnController.connect(profile, wgKey)
 
-            activeVpnBackend = profile.vpnBackend
-            activeWgTunnelName = normalizedWgTunnel(profile)
-            pendingWgTunnelName = null
-
             val mockResult = waitForMockLocationFix(profile, sessionId)
-            return finishWithOptionalLaunch(profile, vpnReady = true, mockResult = mockResult)
+            val vpnStillReady = revalidateVpnStillReady(
+                expectedConnectedState = initialVpnState,
+                profile = profile
+            )
+            if (vpnStillReady) {
+                activeVpnBackend = profile.vpnBackend
+                activeWgTunnelName = normalizedWgTunnel(profile)
+                pendingWgTunnelName = null
+            } else {
+                activeVpnBackend = null
+                activeWgTunnelName = null
+            }
+            return finishWithOptionalLaunch(profile, vpnReady = vpnStillReady, mockResult = mockResult)
         }
 
         val previousHandle = initialVpnState.networkHandle
@@ -177,15 +185,42 @@ class ProfileActivationCoordinator(
             }
         }
 
-        val vpnReady = connectedState != null
+        val mockResult = waitForMockLocationFix(profile, sessionId)
+
+        // Revalidate that the requested VPN is still active after the mock-location wait completes
+        // so we never launch a streaming app or report Active if the VPN dropped in the meantime.
+        val vpnReady = connectedState != null && revalidateVpnStillReady(
+            expectedConnectedState = connectedState,
+            profile = profile
+        )
         if (vpnReady) {
             activeVpnBackend = profile.vpnBackend
             activeWgTunnelName = normalizedWgTunnel(profile)
             pendingWgTunnelName = null
+        } else {
+            activeVpnBackend = null
+            activeWgTunnelName = null
         }
 
-        val mockResult = waitForMockLocationFix(profile, sessionId)
         return finishWithOptionalLaunch(profile, vpnReady = vpnReady, mockResult = mockResult)
+    }
+
+    private fun revalidateVpnStillReady(
+        expectedConnectedState: VpnConnectionState,
+        profile: RegionalProfile
+    ): Boolean {
+        val latest = vpnStateFlow.value
+        if (!latest.isConnected) return false
+        if (latest.ownerBackend != null && latest.ownerBackend != profile.vpnBackend) return false
+        val expectedHandle = expectedConnectedState.networkHandle
+        if (expectedHandle != null &&
+            latest.networkHandle != null &&
+            latest.networkHandle != expectedHandle &&
+            latest.ownerBackend != profile.vpnBackend
+        ) {
+            return false
+        }
+        return true
     }
 
     /**
