@@ -101,14 +101,16 @@ class AppLaunchAccessibilityService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        if (event == null || event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+        if (event == null) return
+        val eventType = event.eventType
+        if (eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             return
         }
         val pkg = event.packageName?.toString() ?: return
         val currentEngine = engine ?: return
 
         serviceScope.launch {
-            currentEngine.handleEvent(event.eventType, pkg)
+            currentEngine.handleEvent(eventType, pkg)
         }
     }
 

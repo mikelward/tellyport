@@ -125,11 +125,12 @@ class ProfileActivationCoordinator(
 
         // Step 1: Synchronously query live ConnectivityManager state + rehydrated DataStore session.
         val liveVpn = refreshLiveVpnState()
-        val persistedSession = if (liveVpn.isConnected) {
-            persistedSessionProvider()
+        val rawPersisted = persistedSessionProvider()
+        val persistedSession = if (isPersistedSessionValidForLiveVpn(liveVpn, rawPersisted)) {
+            rawPersisted
         } else {
-            // Clear stale persisted session if TRANSPORT_VPN is no longer active.
-            if (persistedSessionProvider() != null) {
+            // Clear stale persisted session if VPN dropped, switched backend, or changed network handle.
+            if (rawPersisted != null) {
                 persistActiveSession(null)
             }
             null
@@ -147,14 +148,14 @@ class ProfileActivationCoordinator(
             )
         }
 
-        // Step 2: Already Satisfied Fast-Path (persisted profile match OR Tailscale 100.64.0.0/10 match).
+        // Step 2: Already Satisfied Fast-Path (verified persisted profile match OR Tailscale 100.64.0.0/10 match).
         if (isVpnAlreadySatisfied(liveVpn, persistedSession, profile)) {
             val mockResult = ensureMockLocationRunning(profile)
             val revalidated = refreshLiveVpnState()
             val vpnStillReady = revalidated.isConnected && (
-                profile.vpnBackend != VpnBackend.TAILSCALE ||
-                    revalidated.inferredBackend == InferredVpnBackend.TAILSCALE ||
-                    persistedSession?.profileId == profile.id
+                (profile.vpnBackend == VpnBackend.TAILSCALE &&
+                    revalidated.inferredBackend == InferredVpnBackend.TAILSCALE) ||
+                    isPersistedSessionValidForLiveVpn(revalidated, persistedSession)
                 )
 
             if (vpnStillReady) {
@@ -163,6 +164,7 @@ class ProfileActivationCoordinator(
                         profileId = profile.id,
                         vpnBackend = profile.vpnBackend,
                         tunnelName = normalizedTunnel(profile),
+                        networkHandle = revalidated.networkHandle,
                         activatedAtEpochMs = epochTimeProvider()
                     )
                 )
@@ -283,6 +285,7 @@ class ProfileActivationCoordinator(
                     profileId = profile.id,
                     vpnBackend = profile.vpnBackend,
                     tunnelName = normalizedTunnel(profile),
+                    networkHandle = finalVpnState.networkHandle,
                     activatedAtEpochMs = epochTimeProvider()
                 )
             )
@@ -334,8 +337,10 @@ class ProfileActivationCoordinator(
     ): Boolean {
         if (!liveVpn.isConnected) return false
 
-        // 1. Persisted DataStore session matches this exact profile, backend, and tunnel.
+        // 1. Persisted DataStore session matches this exact profile, backend, and tunnel,
+        //    AND is still verified against the live VPN's inferred backend & networkHandle.
         if (persisted != null &&
+            isPersistedSessionValidForLiveVpn(liveVpn, persisted) &&
             persisted.profileId == targetProfile.id &&
             persisted.vpnBackend == targetProfile.vpnBackend &&
             persisted.tunnelName == normalizedTunnel(targetProfile)
@@ -520,5 +525,52 @@ class ProfileActivationCoordinator(
         const val DEFAULT_VPN_WAIT_TIMEOUT_MS: Long = 8_000L
         const val DEFAULT_STABILIZATION_DELAY_MS: Long = 500L
         const val DEFAULT_MOCK_LOCATION_WAIT_TIMEOUT_MS: Long = 5_000L
+
+        /**
+         * Verifies that a persisted [ActiveVpnSession] still matches the currently active
+         * `TRANSPORT_VPN` network:
+         * - Rejects when disconnected.
+         * - Rejects explicit backend mismatches (e.g., live Tailscale `100.64.0.0/10` vs persisted WG,
+         *   or persisted Tailscale when live VPN has non-Tailscale IPv4 addresses).
+         * - Rejects when the live `networkHandle` differs from the persisted `networkHandle`, or
+         *   when a non-Tailscale persisted session has no verifiable `networkHandle`.
+         */
+        fun isPersistedSessionValidForLiveVpn(
+            liveVpn: VpnConnectionState,
+            persisted: ActiveVpnSession?
+        ): Boolean {
+            if (persisted == null || !liveVpn.isConnected) return false
+
+            // Live LinkProperties explicitly identifies Tailscale -> reject non-Tailscale sessions.
+            if (liveVpn.inferredBackend == InferredVpnBackend.TAILSCALE &&
+                persisted.vpnBackend != VpnBackend.TAILSCALE
+            ) {
+                return false
+            }
+
+            // Persisted Tailscale session while live VPN is non-Tailscale with observed IPv4 addresses.
+            if (persisted.vpnBackend == VpnBackend.TAILSCALE &&
+                liveVpn.inferredBackend == InferredVpnBackend.UNKNOWN_EXTERNAL &&
+                liveVpn.ipv4Addresses.isNotEmpty()
+            ) {
+                return false
+            }
+
+            val persistedHandle = persisted.networkHandle
+            val liveHandle = liveVpn.networkHandle
+            if (persistedHandle != null && liveHandle != null && persistedHandle != liveHandle) {
+                return false
+            }
+
+            // Require a verifiable networkHandle for non-Tailscale backends so an unattributed
+            // external VPN cannot falsely satisfy a persisted WG/SOCKS session without handle proof.
+            if (persisted.vpnBackend != VpnBackend.TAILSCALE &&
+                (persistedHandle == null || liveHandle == null)
+            ) {
+                return false
+            }
+
+            return true
+        }
     }
 }
