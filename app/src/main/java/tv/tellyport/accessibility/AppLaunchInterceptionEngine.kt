@@ -3,6 +3,8 @@ package tv.tellyport.accessibility
 import android.view.accessibility.AccessibilityEvent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -41,7 +43,8 @@ sealed class InterceptionOutcome {
  * Strictly handles [AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED], ignores Tellyport itself,
  * SystemUI/dialogs, keyboards, VPN apps, and stock TV launchers, manages the Home Launcher
  * auto-disconnect grace timer, and performs mutex-protected debounced interception for mapped
- * streaming apps.
+ * streaming apps. If the user opens a distinct mapped app while an earlier interception is still
+ * waiting on VPN/mock-location, the stale interception is superseded so the latest app wins.
  */
 class AppLaunchInterceptionEngine(
     private val scope: CoroutineScope,
@@ -57,8 +60,12 @@ class AppLaunchInterceptionEngine(
     private val additionalLauncherPackages: Set<String> = emptySet()
 ) {
     private val interceptionMutex = Mutex()
+    private val flightLock = Any()
     private val recentRelaunchTimestamps = mutableMapOf<String, Long>()
     private var homeDisconnectJob: Job? = null
+
+    private var inFlightPackage: String? = null
+    private var inFlightJob: Job? = null
 
     @Volatile
     private var lastForegroundPackage: String? = null
@@ -127,71 +134,98 @@ class AppLaunchInterceptionEngine(
             return InterceptionOutcome.Debounced
         }
 
-        // Serialize concurrent window-state events with a mutex.
-        if (!interceptionMutex.tryLock()) {
-            return InterceptionOutcome.Debounced
+        val myJob = currentCoroutineContext()[Job]
+        val jobToSupersede: Job? = synchronized(flightLock) {
+            if (inFlightPackage == packageName && inFlightJob?.isActive == true) {
+                return InterceptionOutcome.Debounced
+            }
+            val prev = inFlightJob?.takeIf { it.isActive }
+            inFlightPackage = packageName
+            inFlightJob = myJob
+            prev
+        }
+
+        // If another mapped app was being intercepted, cancel that stale activation first so it
+        // does not relaunch over the user's newer app choice.
+        if (jobToSupersede != null) {
+            jobToSupersede.cancelAndJoin()
         }
 
         return try {
-            // Double-check debounce & satisfaction inside the lock.
-            val lockedNow = clockElapsedMs()
-            val lockedLastRelaunch = synchronized(recentRelaunchTimestamps) {
-                recentRelaunchTimestamps[packageName]
-            }
-            if (lockedLastRelaunch != null && (lockedNow - lockedLastRelaunch) < relaunchDebounceMs) {
-                lastForegroundPackage = packageName
-                return InterceptionOutcome.Debounced
-            }
-
-            if (coordinator.isProfileCurrentlySatisfied(matchedProfile)) {
-                lastForegroundPackage = packageName
-                if (previousPackage != packageName) {
-                    showToast("Already connected to ${matchedProfile.name}")
+            interceptionMutex.withLock {
+                // If an even newer distinct app superseded us while we waited, yield cleanly.
+                val stillCurrent = synchronized(flightLock) {
+                    inFlightJob === myJob && inFlightPackage == packageName
                 }
-                return InterceptionOutcome.AlreadySatisfied
+                if (!stillCurrent) {
+                    return@withLock InterceptionOutcome.Debounced
+                }
+
+                // Double-check debounce & satisfaction inside the lock.
+                val lockedNow = clockElapsedMs()
+                val lockedLastRelaunch = synchronized(recentRelaunchTimestamps) {
+                    recentRelaunchTimestamps[packageName]
+                }
+                if (lockedLastRelaunch != null && (lockedNow - lockedLastRelaunch) < relaunchDebounceMs) {
+                    lastForegroundPackage = packageName
+                    return@withLock InterceptionOutcome.Debounced
+                }
+
+                if (coordinator.isProfileCurrentlySatisfied(matchedProfile)) {
+                    lastForegroundPackage = packageName
+                    if (previousPackage != packageName) {
+                        showToast("Already connected to ${matchedProfile.name}")
+                    }
+                    return@withLock InterceptionOutcome.AlreadySatisfied
+                }
+
+                // Notify user on screen before returning home & switching regions.
+                showToast("Connecting to ${matchedProfile.name}...")
+
+                // 1. Return to Home so the app does not render in the wrong region.
+                performGlobalHomeAction()
+
+                // 2. Force-stop target app (Shizuku IActivityManager.forceStopPackage -> fallback killBackgroundProcesses).
+                forceStopper.forceStop(packageName)
+
+                // 3. Record debounce timestamp BEFORE relaunch so our own relaunch event is ignored.
+                synchronized(recentRelaunchTimestamps) {
+                    recentRelaunchTimestamps[packageName] = clockElapsedMs()
+                }
+
+                // 4. Reconcile VPN + start/update MockLocationService + cleanly relaunch with CLEAR_TASK.
+                val progress = coordinator.activate(
+                    profile = matchedProfile,
+                    targetPackageOverride = packageName,
+                    clearTaskOnLaunch = true
+                )
+
+                // Refresh debounce timestamp after activation finishes so immediate window transitions are debounced.
+                synchronized(recentRelaunchTimestamps) {
+                    recentRelaunchTimestamps[packageName] = clockElapsedMs()
+                }
+
+                if (progress is ActivationProgress.Warning) {
+                    showToast(progress.message)
+                    lastForegroundPackage = null
+                } else {
+                    lastForegroundPackage = packageName
+                }
+
+                _lastInterceptedSummary.value = "Intercepted $packageName → ${matchedProfile.name}"
+                InterceptionOutcome.Intercepted(
+                    packageName = packageName,
+                    profileId = matchedProfile.id,
+                    progress = progress
+                )
             }
-
-            // Notify user on screen before returning home & switching regions.
-            showToast("Connecting to ${matchedProfile.name}...")
-
-            // 1. Return to Home so the app does not render in the wrong region.
-            performGlobalHomeAction()
-
-            // 2. Force-stop target app (Shizuku IActivityManager.forceStopPackage -> fallback killBackgroundProcesses).
-            forceStopper.forceStop(packageName)
-
-            // 3. Record debounce timestamp BEFORE relaunch so our own relaunch event is ignored.
-            synchronized(recentRelaunchTimestamps) {
-                recentRelaunchTimestamps[packageName] = clockElapsedMs()
-            }
-
-            // 4. Reconcile VPN + start/update MockLocationService + cleanly relaunch with CLEAR_TASK.
-            val progress = coordinator.activate(
-                profile = matchedProfile,
-                targetPackageOverride = packageName,
-                clearTaskOnLaunch = true
-            )
-
-            // Refresh debounce timestamp after activation finishes so immediate window transitions are debounced.
-            synchronized(recentRelaunchTimestamps) {
-                recentRelaunchTimestamps[packageName] = clockElapsedMs()
-            }
-
-            if (progress is ActivationProgress.Warning) {
-                showToast(progress.message)
-                lastForegroundPackage = null
-            } else {
-                lastForegroundPackage = packageName
-            }
-
-            _lastInterceptedSummary.value = "Intercepted $packageName → ${matchedProfile.name}"
-            InterceptionOutcome.Intercepted(
-                packageName = packageName,
-                profileId = matchedProfile.id,
-                progress = progress
-            )
         } finally {
-            interceptionMutex.unlock()
+            synchronized(flightLock) {
+                if (inFlightJob === myJob) {
+                    inFlightJob = null
+                    inFlightPackage = null
+                }
+            }
         }
     }
 

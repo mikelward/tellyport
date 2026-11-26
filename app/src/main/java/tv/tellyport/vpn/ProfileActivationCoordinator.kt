@@ -250,6 +250,9 @@ class ProfileActivationCoordinator(
                     sawDisconnect = true
                     return@first false
                 }
+                if (!isLiveVpnCompatibleWithProfile(state, profile)) {
+                    return@first false
+                }
                 if (!hadConflictingVpn) {
                     true
                 } else {
@@ -271,12 +274,14 @@ class ProfileActivationCoordinator(
 
         val mockResult = waitForMockLocationFix(profile, sessionId)
 
-        // Revalidate live VPN state after stabilization & mock-location wait.
+        // Revalidate live VPN handle & backend compatibility after stabilization & mock-location wait
+        // so a replacement VPN network during the wait is never persisted or launched through.
         val finalVpnState = refreshLiveVpnState()
-        val vpnReady = connectedState != null && finalVpnState.isConnected && (
-            !hadConflictingVpn || sawDisconnect ||
-                (previousHandle != null && finalVpnState.networkHandle != null && finalVpnState.networkHandle != previousHandle)
-            )
+        val vpnReady = revalidateConnectedVpn(
+            connectedState = connectedState,
+            finalVpnState = finalVpnState,
+            profile = profile
+        )
 
         if (vpnReady) {
             pendingWgTunnelName = null
@@ -300,6 +305,40 @@ class ProfileActivationCoordinator(
             vpnReady = vpnReady,
             mockResult = mockResult
         )
+    }
+
+    private fun revalidateConnectedVpn(
+        connectedState: VpnConnectionState?,
+        finalVpnState: VpnConnectionState,
+        profile: RegionalProfile
+    ): Boolean {
+        if (connectedState == null || !finalVpnState.isConnected) return false
+        if (!isLiveVpnCompatibleWithProfile(finalVpnState, profile)) return false
+        val expectedHandle = connectedState.networkHandle
+        val finalHandle = finalVpnState.networkHandle
+        if (expectedHandle != null && finalHandle != null && finalHandle != expectedHandle) {
+            return false
+        }
+        return true
+    }
+
+    private fun isLiveVpnCompatibleWithProfile(
+        liveVpn: VpnConnectionState,
+        profile: RegionalProfile
+    ): Boolean {
+        if (!liveVpn.isConnected) return false
+        if (liveVpn.inferredBackend == InferredVpnBackend.TAILSCALE &&
+            profile.vpnBackend != VpnBackend.TAILSCALE
+        ) {
+            return false
+        }
+        if (profile.vpnBackend == VpnBackend.TAILSCALE &&
+            liveVpn.inferredBackend == InferredVpnBackend.UNKNOWN_EXTERNAL &&
+            liveVpn.ipv4Addresses.isNotEmpty()
+        ) {
+            return false
+        }
+        return true
     }
 
     /**

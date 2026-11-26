@@ -297,4 +297,96 @@ class AppLaunchInterceptionEngineTest {
         assertEquals(1, mockStoppedCount)
         assertTrue(dispatcher.broadcasts.any { it.action == VpnController.ACTION_TAILSCALE_DISCONNECT })
     }
+
+    @Test
+    fun openingDistinctMappedAppDuringActiveInterception_supersedesStaleAppAndLaunchesNewApp() = runTest {
+        val dispatcher = FakeDispatcher()
+        val vpnState = MutableStateFlow(VpnConnectionState(isConnected = false))
+        val mockStatus = MutableStateFlow(MockLocationStatus())
+        val forceStopper = FakeForceStopper()
+        val toasts = mutableListOf<String>()
+
+        val nyProfile = RegionalProfile(
+            id = "preset-ny",
+            name = "New York",
+            regionCode = "US",
+            latitude = 40.7128,
+            longitude = -74.0060,
+            vpnBackend = VpnBackend.TAILSCALE,
+            mappedPackages = listOf("com.cbs.ott")
+        )
+        val sydneyProfile = RegionalProfile(
+            id = "preset-sydney",
+            name = "Sydney",
+            regionCode = "AU",
+            latitude = -33.8688,
+            longitude = 151.2093,
+            vpnBackend = VpnBackend.WG_TUNNEL,
+            tunnelName = "unifi-au-syd",
+            mappedPackages = listOf("au.com.stan.and")
+        )
+
+        val coordinator = ProfileActivationCoordinator(
+            vpnController = VpnController(dispatcher),
+            vpnStateFlow = vpnState,
+            mockLocationStatusFlow = mockStatus,
+            startMockLocation = { profile, sid ->
+                mockStatus.value = MockLocationStatus(
+                    isActive = true,
+                    sessionId = sid,
+                    activeProfileId = profile.id,
+                    activeProfileName = profile.name,
+                    configuredLatitude = profile.latitude,
+                    configuredLongitude = profile.longitude,
+                    injectionCount = 1L
+                )
+            },
+            stopMockLocation = {},
+            wgRemoteControlKeyProvider = { "wg-secret" },
+            stabilizationDelayMs = 100L
+        )
+
+        val engine = AppLaunchInterceptionEngine(
+            scope = this,
+            profilesProvider = { listOf(nyProfile, sydneyProfile) },
+            autoDisconnectSettingsProvider = { AutoDisconnectSettings(enabled = false) },
+            hasActiveSessionOrVpn = { vpnState.value.isConnected },
+            coordinator = coordinator,
+            forceStopper = forceStopper,
+            performGlobalHomeAction = { true },
+            showToast = { toasts.add(it) }
+        )
+
+        // App A (Paramount+ / New York) starts intercepting and is waiting for Tailscale.
+        val jobA = async {
+            engine.handleEvent(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED, "com.cbs.ott")
+        }
+        runCurrent()
+        assertEquals(listOf("Connecting to New York..."), toasts)
+
+        // User opens distinct mapped App B (Stan / Sydney) while App A is still waiting!
+        val jobB = async {
+            engine.handleEvent(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED, "au.com.stan.and")
+        }
+        runCurrent()
+
+        // App A must have been cancelled and App B is now connecting Sydney WG Tunnel.
+        assertTrue(jobA.isCancelled)
+        assertEquals(listOf("Connecting to New York...", "Connecting to Sydney..."), toasts)
+        assertEquals(listOf("com.cbs.ott", "au.com.stan.and"), forceStopper.stoppedPackages)
+
+        // Sydney WG Tunnel connects -> ONLY App B (Stan) is launched, NEVER stale App A!
+        vpnState.value = VpnConnectionState(
+            isConnected = true,
+            networkHandle = 888L,
+            inferredBackend = InferredVpnBackend.UNKNOWN_EXTERNAL,
+            ipv4Addresses = listOf("10.20.0.2")
+        )
+        advanceTimeBy(200L)
+
+        val outcomeB = jobB.await()
+        assertTrue(outcomeB is InterceptionOutcome.Intercepted)
+        assertTrue((outcomeB as InterceptionOutcome.Intercepted).progress is ActivationProgress.Active)
+        assertEquals(listOf("au.com.stan.and"), dispatcher.startedActivities.map { it.`package` })
+    }
 }
