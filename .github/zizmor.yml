@@ -1,0 +1,32 @@
+# Policy for zizmor; the workflow beside this file runs it.
+#
+# The defaults demand hash pins everywhere and refuse pull_request_target
+# outright. Both collide with decisions made deliberately across this
+# fleet of repos, so the exceptions live here, scoped as narrowly as the
+# tool allows.
+rules:
+  unpinned-uses:
+    config:
+      policies:
+        # `@main` IS the release for these sibling actions/workflows: this
+        # repo tracks them deliberately and enumerates each one by name.
+        "mikelward/lanes": ref-pin
+        "mikelward/codex-review": ref-pin
+        "mikelward/codex-review/.github/workflows/check-consumer.yml": ref-pin
+        "mikelward/gradle-update/.github/workflows/gradle-update.yml": ref-pin
+        # Official actions may pin to a tag or hash.
+        "actions/*": ref-pin
+        # Everything else must pin to a hash.
+        "*": hash-pin
+  secrets-inherit:
+    # The weekly Gradle update caller passes `secrets: inherit` so the called
+    # workflow's publish job can read GRADLE_UPDATE_PAT from this repository's
+    # `gradle-update` environment without exposing it to the untrusted update job.
+    ignore:
+      - gradle-update.yml
+  dangerous-triggers:
+    # Both triggers are load-bearing and reasoned through in
+    # mikelward/codex-review's docs/CONSUMER.md.
+    ignore:
+      - codex-review.yml
+      - codex-review-check.yml

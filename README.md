@@ -28,22 +28,24 @@ Debug APK output: `app/build/outputs/apk/debug/app-debug.apk`
 
 ## One-Time Google TV Streamer Setup (Android 14 / API 34)
 
+Debug builds install as `tv.tellyport.debug` so they can sit beside a signed release build (`tv.tellyport`). For a release/Play install, substitute `tv.tellyport` for `tv.tellyport.debug` below (keeping the service class name `tv.tellyport.accessibility.AppLaunchAccessibilityService`).
+
 ```bash
-# 1. Install Tellyport
+# 1. Install Tellyport (debug build -> tv.tellyport.debug)
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 # 2. Grant Mock Location AppOps
-adb shell appops set tv.tellyport android:mock_location allow
+adb shell appops set tv.tellyport.debug android:mock_location allow
 
 # 3. Grant Runtime Location Permission
-adb shell pm grant tv.tellyport android.permission.ACCESS_FINE_LOCATION
+adb shell pm grant tv.tellyport.debug android.permission.ACCESS_FINE_LOCATION
 
 # 4. Enable Accessibility App Launch Interceptor
-adb shell settings put secure enabled_accessibility_services tv.tellyport/tv.tellyport.accessibility.AppLaunchAccessibilityService
+adb shell settings put secure enabled_accessibility_services tv.tellyport.debug/tv.tellyport.accessibility.AppLaunchAccessibilityService
 adb shell settings put secure accessibility_enabled 1
 
 # 5. Grant WRITE_SECURE_SETTINGS for Automatic Post-Reboot Wireless Debugging Recovery
-adb shell pm grant tv.tellyport android.permission.WRITE_SECURE_SETTINGS
+adb shell pm grant tv.tellyport.debug android.permission.WRITE_SECURE_SETTINGS
 ```
 
-6. Open **Tellyport → Setup & Diagnostics** to authorize **Shizuku**, configure your **WG Tunnel Remote Control Key** (if using WG Tunnel), and assign a VPN backend to each city profile.
+6. Open **Tellyport → Setup & Diagnostics** to authorize **Shizuku**, configure your **WG Tunnel Remote Control Key** (if using WG Tunnel), and assign a VPN backend to each city profile. The in-app Setup screen also shows copyable ADB commands matching the installed build's package ID.

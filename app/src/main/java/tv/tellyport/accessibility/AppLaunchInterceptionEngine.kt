@@ -321,6 +321,7 @@ class AppLaunchInterceptionEngine(
 
         val NON_INTERCEPTED_FOREGROUND_APPS: Set<String> = setOf(
             OWN_PACKAGE,
+            "$OWN_PACKAGE.debug",
             "com.android.settings",
             "com.android.tv.settings",
             VpnController.TAILSCALE_PACKAGE,

@@ -1,0 +1,566 @@
+name: ci
+
+# Ported from the peer Android repos (snoozemo / typelauncher).
+# Runs lanes classification, script tests, release APK R8 build, version-selection
+# tests, unit tests, Android lint, and release version guard on PRs; on pushes to
+# `main`, builds a signed AAB in parallel (`release-build`), archives it, creates a
+# durable GitHub prerelease (`scripts/publish-github-release.sh`), and — once
+# `PLAY_SERVICE_ACCOUNT_JSON` is configured in the `production` environment —
+# uploads it to the Google Play internal testing track (`docs/play-store-internal-track.md`).
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: >-
+          Pull request number this run reports for. Classification, the
+          prefix lint, and the build's merge-ref checkout all come from it.
+        required: true
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ci-${{ github.event_name == 'push' && format('main-{0}', github.sha) || github.event.pull_request.number || github.event.inputs.pr || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'push' }}
+
+permissions: {}
+
+jobs:
+  classify:
+    name: Classify the diff
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      docs_only: ${{ steps.lane.outputs.docs_only }}
+      base_sha: ${{ steps.lane.outputs.base_sha }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+        with:
+          persist-credentials: false
+      - name: Classify
+        id: lane
+        uses: mikelward/lanes@main
+        with:
+          mode: classify
+          pr: ${{ github.event.pull_request.number || inputs.pr }}
+
+  build:
+    name: Build and unit test
+    runs-on: ubuntu-latest
+    needs: classify
+    if: needs.classify.outputs.docs_only != 'true'
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/pull/{0}/merge', inputs.pr) || '' }}
+          persist-credentials: false
+
+      - name: Set up JDK
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961  # v5.7.0
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c  # v5.0.2
+        with:
+          cache-read-only: ${{ github.event_name != 'push' }}
+
+      - name: Robolectric version
+        id: robolectric
+        run: |
+          version=$(sed -n 's/^robolectric = "\(.*\)"$/\1/p' gradle/libs.versions.toml)
+          if [ -z "$version" ]; then
+            echo "::error::No robolectric version in gradle/libs.versions.toml; the runtime cache has no key."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Restore Robolectric's Android runtime
+        id: robolectric-cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830  # v4.3.0
+        with:
+          path: ~/.m2/repository/org/robolectric
+          key: robolectric-${{ runner.os }}-${{ steps.robolectric.outputs.version }}
+
+      - name: Test the release-publishing script
+        run: python3 scripts/publish_github_release_test.py
+
+      - name: Test the shallow-clone deepener
+        run: python3 scripts/unshallow_test.py
+
+      - name: Test the release-notes deduplication
+        run: python3 scripts/release_notes_dedup_test.py
+
+      - name: Build release APK
+        # Full R8 shrinking, optimization, and obfuscation coverage on PRs and
+        # forks. On non-fork main pushes `release-build` runs bundleRelease in
+        # parallel, so R8 doesn't run twice.
+        if: |
+          !(github.ref == 'refs/heads/main' && github.event_name == 'push' &&
+            github.event.repository.fork != true)
+        run: ./gradlew assembleRelease
+
+      - name: Test the version selection
+        run: python3 scripts/version_selection_test.py
+
+      - name: Run unit tests
+        env:
+          ORG_GRADLE_PROJECT_tellyportFixedVersion: "true"
+        run: ./gradlew test
+
+      - name: Save Robolectric's Android runtime
+        if: success() && github.event_name == 'push' && steps.robolectric-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830  # v4.3.0
+        with:
+          path: ~/.m2/repository/org/robolectric
+          key: robolectric-${{ runner.os }}-${{ steps.robolectric.outputs.version }}
+
+      - name: Print failing test details
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr }}
+          JOB_NAME: ${{ github.job }}
+        run: |
+          shopt -s nullglob globstar
+          summary=""
+          for xml in **/build/test-results/**/TEST-*.xml; do
+            if grep -q "<\(failure\|error\)" "$xml"; then
+              echo "::group::$xml"
+              cat "$xml"
+              echo "::endgroup::"
+              summary+=$'\n\n'"### \`$xml\`"$'\n```xml\n'"$(cat "$xml")"$'\n```'
+            fi
+          done
+          if [ -n "$PR_NUMBER" ] && [ -n "$summary" ]; then
+            body=$'<!-- ci-failure -->'$'\n'"**${JOB_NAME} failed.** Failing test reports:"$'\n'"$summary"
+            if [ "${#body}" -gt 60000 ]; then
+              body="${body:0:60000}"$'\n```\n\n_Truncated — the full reports are in the `unit-test-reports` artifact._'
+            fi
+            if ! gh api -X POST "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
+              -f body="$body" > /dev/null; then
+              echo "::warning::Could not post the failing-test comment; the reports are in the job log above and in the unit-test-reports artifact."
+            fi
+          fi
+
+      - name: Upload unit test reports
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: unit-test-reports
+          path: |
+            **/build/reports/tests/
+            **/build/test-results/
+          if-no-files-found: ignore
+          retention-days: 1
+
+      - name: Run lint
+        env:
+          ORG_GRADLE_PROJECT_tellyportFixedVersion: "true"
+        run: ./gradlew lint
+
+      - name: Verify the release version guard
+        run: |
+          ./gradlew -q :app:preReleaseBuild --dry-run | tee /tmp/release-task-graph.txt
+          grep -q ':app:checkReleaseVersionDerivation' /tmp/release-task-graph.txt
+          ./gradlew :app:checkReleaseVersionDerivation
+          trap 'rm -f .git/shallow' EXIT
+          git rev-parse HEAD > .git/shallow
+          if out=$(GRADLE_ACTIONS_SKIP_BUILD_RESULT_CAPTURE=true ./gradlew :app:checkReleaseVersionDerivation 2>&1); then
+            echo "$out"
+            echo "::error::The release guard passed on a shallow clone."
+            exit 1
+          fi
+          echo "$out" | grep -q "Refusing to build a release"
+
+  lanes:
+    name: lanes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [classify, build]
+    if: always()
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+        with:
+          persist-credentials: false
+      - name: Verdict
+        uses: mikelward/lanes@main
+        with:
+          mode: gate
+          pr: ${{ github.event.pull_request.number || inputs.pr }}
+          classify-result: ${{ needs.classify.result }}
+          base-sha: ${{ needs.classify.outputs.base_sha }}
+          results: >-
+            build=${{ needs.build.result }}
+
+  release-build:
+    name: Build the release AAB
+    if: |
+      github.ref == 'refs/heads/main' && github.event_name == 'push' &&
+      needs.classify.outputs.docs_only != 'true'
+    needs: classify
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    env:
+      HAS_RELEASE_KEYSTORE: ${{ secrets.RELEASE_KEYSTORE_BASE64 != '' }}
+    outputs:
+      signed: ${{ steps.bundle.outputs.signed }}
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up JDK
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961  # v5.7.0
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c  # v5.0.2
+
+      - name: Require a release keystore
+        if: env.HAS_RELEASE_KEYSTORE != 'true' && github.event.repository.fork != true
+        run: |
+          echo "::error::A push to main must produce a signed AAB, but RELEASE_KEYSTORE_BASE64 is unset or empty. Set it in the 'production' environment together with RELEASE_KEYSTORE_PASSWORD, RELEASE_KEY_ALIAS and RELEASE_KEY_PASSWORD (see docs/play-store-internal-track.md)."
+          exit 1
+
+      - name: Materialize release keystore
+        if: env.HAS_RELEASE_KEYSTORE == 'true'
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+        run: |
+          missing=""
+          [ -z "$RELEASE_KEYSTORE_PASSWORD" ] && missing="$missing RELEASE_KEYSTORE_PASSWORD"
+          [ -z "$RELEASE_KEY_PASSWORD" ]      && missing="$missing RELEASE_KEY_PASSWORD"
+          [ -z "$RELEASE_KEY_ALIAS" ]         && missing="$missing RELEASE_KEY_ALIAS"
+          if [ -n "$missing" ]; then
+            echo "::error::RELEASE_KEYSTORE_BASE64 is set but these companion secrets are missing or empty:$missing"
+            exit 1
+          fi
+          printf '%s' "${RELEASE_KEYSTORE_BASE64}" | base64 -d > "${RUNNER_TEMP}/release.keystore"
+          if ! keytool -list -keystore "${RUNNER_TEMP}/release.keystore" -storepass "$RELEASE_KEYSTORE_PASSWORD" >/dev/null 2>&1; then
+            echo "::error::Decoded release keystore is not a valid keystore or RELEASE_KEYSTORE_PASSWORD is wrong."
+            exit 1
+          fi
+          echo "RELEASE_KEYSTORE_FILE=${RUNNER_TEMP}/release.keystore" >> "${GITHUB_ENV}"
+
+      - name: Build release AAB
+        id: bundle
+        if: env.RELEASE_KEYSTORE_FILE != ''
+        env:
+          RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+        run: |
+          ./gradlew :app:bundleRelease
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Upload signed AAB as workflow artifact
+        if: env.RELEASE_KEYSTORE_FILE != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: app-release-aab
+          path: app/build/outputs/bundle/release/app-release.aab
+          if-no-files-found: error
+          retention-days: 30
+
+  deploy:
+    name: Publish
+    concurrency:
+      group: deploy-main-release
+      cancel-in-progress: false
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: [build, release-build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    env:
+      HAS_PLAY_SA: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON != '' }}
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Build release notes
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+          AFTER_SHA: ${{ github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          if [ "${GITHUB_RUN_ATTEMPT}" -gt 1 ]; then
+            attempt=1
+            while [ "$attempt" -lt "${GITHUB_RUN_ATTEMPT}" ]; do
+              if ! published=$(gh api \
+                "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/attempts/${attempt}/jobs?per_page=100" \
+                --jq '[.jobs[]
+                       | select(.name == "Publish")
+                       | .steps[]
+                       | select(.name == "Upload to Play Store internal track")
+                       | .conclusion]
+                      | any(. == "success")'); then
+                echo "::error::Could not inspect attempt ${attempt} jobs to verify whether this run already published; refusing to publish."
+                exit 1
+              fi
+              if [ "$published" = "true" ]; then
+                echo "This commit already published successfully in attempt ${attempt} of this same run; skipping to avoid re-uploading an already-used versionCode."
+                echo "RELEASE_NOTES_SKIP=true" >> "$GITHUB_ENV"
+                exit 0
+              fi
+              attempt=$((attempt + 1))
+            done
+          fi
+
+          if ! runs_tsv=$(gh api \
+            "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?branch=main&per_page=100" \
+            --jq '.workflow_runs[]? | [.id, .head_sha] | @tsv'); then
+            echo "::error::Could not read workflow run history from the GitHub Actions API; refusing to establish the release-notes boundary."
+            exit 1
+          fi
+
+          prev_sha=""
+          oldest_head=""
+          while IFS=$'\t' read -r run_id run_head; do
+            [ -z "$run_id" ] && continue
+            [ "$run_head" = "$AFTER_SHA" ] && continue
+            oldest_head="$run_head"
+            if ! published=$(gh api \
+              "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/jobs?filter=all&per_page=100" \
+              --jq '[.jobs[]
+                     | select(.name == "Publish")
+                     | select(.conclusion == "success")
+                     | .steps[]
+                     | select(.name == "Upload to Play Store internal track")
+                     | .conclusion]
+                    | any(. == "success")'); then
+              echo "::error::Could not inspect jobs for workflow run ${run_id}; refusing to establish the release-notes boundary."
+              exit 1
+            fi
+            if [ "$published" = "true" ]; then
+              prev_sha="$run_head"
+              break
+            fi
+          done <<< "$runs_tsv"
+
+          if [ -n "$prev_sha" ] \
+             && git merge-base --is-ancestor "$AFTER_SHA" "$prev_sha" 2>/dev/null; then
+            echo "A later push already published (last published SHA ${prev_sha} already includes this run's ${AFTER_SHA}); skipping."
+            echo "RELEASE_NOTES_SKIP=true" >> "$GITHUB_ENV"
+            exit 0
+          fi
+
+          base_sha=""
+          if [ -n "$prev_sha" ] && git cat-file -e "$prev_sha" 2>/dev/null; then
+            base_sha="$prev_sha"
+          elif [ -n "$oldest_head" ] \
+             && git rev-parse --quiet --verify "${oldest_head}^{commit}" >/dev/null; then
+            base_sha=$(git rev-parse --quiet --verify "${oldest_head}^{commit}^" 2>/dev/null || echo "$oldest_head")
+          elif [ "$BEFORE_SHA" != "0000000000000000000000000000000000000000" ] \
+             && git rev-parse --quiet --verify "$BEFORE_SHA^{commit}" >/dev/null; then
+            base_sha="$BEFORE_SHA"
+          fi
+
+          if [ -n "$base_sha" ]; then
+            shas=$(git log --reverse --no-merges --format=%H "$base_sha..$AFTER_SHA")
+          else
+            shas=""
+          fi
+          if [ -z "$shas" ]; then
+            shas=$(git log -1 --format=%H "$AFTER_SHA")
+          fi
+
+          subjects=()
+          cap_truncated=false
+          MAX_SUBJECTS=50
+          add_subject() {
+            local s="$1" i
+            for (( i = 0; i < ${#subjects[@]}; i++ )); do
+              if [ "${subjects[$i]}" = "$s" ]; then
+                echo "Subject already collected, not repeating it: $s"
+                return 0
+              fi
+            done
+            if [ "${#subjects[@]}" -ge "$MAX_SUBJECTS" ]; then
+              echo "Reached $MAX_SUBJECTS distinct subjects; marking the notes truncated."
+              cap_truncated=true
+              return 1
+            fi
+            subjects+=("$s")
+          }
+
+          while IFS= read -r sha; do
+            [ -z "$sha" ] && continue
+            s=$(git log -1 --format=%s "$sha")
+            case "$s" in
+              ci:*)       continue ;;
+              docs:*)     continue ;;
+              internal:*) continue ;;
+              refactor:*) continue ;;
+              test:*)     continue ;;
+              tests:*)    continue ;;
+            esac
+            relevant=false
+            while IFS= read -r f; do
+              [ -z "$f" ] && continue
+              case "$f" in
+                .*)   ;;
+                *.md) ;;
+                *)    relevant=true; break ;;
+              esac
+            done < <(git diff-tree --no-commit-id --name-only -r "$sha")
+            if [ "$relevant" = "false" ]; then
+              continue
+            fi
+            add_subject "$s" || break
+          done <<< "$shas"
+
+          if [ "${#subjects[@]}" -eq 0 ]; then
+            if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+              echo "No release-worthy commits, but this is a manual workflow_dispatch — publishing the current tip anyway with a generic note."
+              subjects+=("Internal test build")
+            else
+              echo "No release-worthy commits queued since the last publication; skipping the release and the Play upload."
+              echo "RELEASE_NOTES_SKIP=true" >> "$GITHUB_ENV"
+              exit 0
+            fi
+          fi
+
+          MAX=500
+          TRUNC_MARK=$'\n…'
+          export LC_ALL=C.UTF-8
+
+          format_notes() {
+            local first=1
+            for s in "$@"; do
+              if [ "$first" -eq 1 ]; then
+                printf '%s' "• $s"
+                first=0
+              else
+                printf '\n• %s' "$s"
+              fi
+            done
+          }
+
+          char_len() {
+            printf '%s' "$1" | wc -m
+          }
+
+          truncate_chars() {
+            printf '%s' "$1" | python3 -c 'import sys; sys.stdout.write(sys.stdin.read()[:int(sys.argv[1])])' "$2"
+          }
+
+          kept=()
+          truncated=$cap_truncated
+          for s in "${subjects[@]}"; do
+            candidate=$(format_notes "${kept[@]}" "$s")
+            if [ "$(char_len "$candidate")" -gt "$MAX" ]; then
+              truncated=true
+              break
+            fi
+            kept+=("$s")
+          done
+
+          if [ "${#kept[@]}" -eq 0 ]; then
+            notes=$(truncate_chars "• ${subjects[0]}" 499)
+            notes="${notes}…"
+          else
+            notes=$(format_notes "${kept[@]}")
+            if [ "$truncated" = true ]; then
+              while [ "$(char_len "${notes}${TRUNC_MARK}")" -gt "$MAX" ] \
+                && [ "${#kept[@]}" -gt 0 ]; do
+                unset 'kept[${#kept[@]}-1]'
+                notes=$(format_notes "${kept[@]}")
+              done
+              if [ "${#kept[@]}" -eq 0 ]; then
+                notes=$(truncate_chars "• ${subjects[0]}" 498)
+              fi
+              notes="${notes}${TRUNC_MARK}"
+            fi
+          fi
+
+          delim="RELEASE_NOTES_EOF_$(openssl rand -hex 16)"
+          {
+            printf 'RELEASE_NOTES<<%s\n' "$delim"
+            printf '%s\n' "$notes"
+            printf '%s\n' "$delim"
+          } >> "$GITHUB_ENV"
+
+      - name: Download the release AAB
+        if: needs.release-build.outputs.signed == 'true'
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131  # v7.0.0
+        with:
+          name: app-release-aab
+          path: app/build/outputs/bundle/release
+
+      - name: Publish a GitHub release
+        if: |
+          needs.release-build.outputs.signed == 'true' &&
+          env.RELEASE_NOTES_SKIP != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.sha }}
+          AAB_PATH: app/build/outputs/bundle/release/app-release.aab
+          ASSET_BASE: tellyport
+        run: scripts/publish-github-release.sh
+
+      - name: Compose Play Store release notes
+        if: |
+          needs.release-build.outputs.signed == 'true' &&
+          env.HAS_PLAY_SA == 'true' &&
+          env.RELEASE_NOTES_SKIP != 'true' &&
+          env.RELEASE_SUPERSEDED != 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/whatsnew"
+          printf '%s' "${RELEASE_NOTES}" \
+            > "${RUNNER_TEMP}/whatsnew/whatsnew-en-US"
+          echo "PLAY_WHATSNEW_DIR=${RUNNER_TEMP}/whatsnew" >> "${GITHUB_ENV}"
+
+      - name: Upload to Play Store internal track
+        if: |
+          needs.release-build.outputs.signed == 'true' &&
+          env.HAS_PLAY_SA == 'true' &&
+          env.RELEASE_NOTES_SKIP != 'true' &&
+          env.RELEASE_SUPERSEDED != 'true'
+        uses: r0adkll/upload-google-play@a80b0bcdcfdfcc2d026f2bc73f726760b2cbc967  # post-v1.1.5
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: tv.tellyport
+          releaseFiles: app/build/outputs/bundle/release/app-release.aab
+          tracks: internal
+          status: completed
+          whatsNewDirectory: ${{ env.PLAY_WHATSNEW_DIR }}
