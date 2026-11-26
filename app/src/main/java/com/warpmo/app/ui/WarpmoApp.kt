@@ -47,6 +47,8 @@ fun WarpmoApp(
                     onRequestLocationPermission = onRequestLocationPermission,
                     onRequestNotificationPermission = onRequestNotificationPermission,
                     onOpenTailscale = viewModel::openTailscaleApp,
+                    onOpenWgTunnel = viewModel::openWgTunnelApp,
+                    onSaveWgRemoteControlKey = viewModel::saveWgRemoteControlKey,
                     onTestTailscaleConnect = viewModel::triggerTailscaleConnect,
                     onTestTailscaleDisconnect = viewModel::triggerTailscaleDisconnect,
                     onResetDefaultProfiles = viewModel::resetDefaultProfiles
@@ -56,6 +58,7 @@ fun WarpmoApp(
             is WarpmoDestination.ProfileEditor -> {
                 ProfileEditorScreen(
                     existingProfile = destination.editingProfile,
+                    currentWgRemoteControlKey = state.wgRemoteControlKey,
                     onSave = viewModel::saveProfile,
                     onCancel = viewModel::navigateToDashboard
                 )

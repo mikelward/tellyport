@@ -23,14 +23,22 @@ import androidx.compose.material.icons.rounded.MyLocation
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Restore
+import androidx.compose.material.icons.rounded.Save
 import androidx.compose.material.icons.rounded.VpnKey
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Text
@@ -53,11 +61,14 @@ fun DiagnosticsScreen(
     onRequestLocationPermission: () -> Unit,
     onRequestNotificationPermission: () -> Unit,
     onOpenTailscale: () -> Unit,
+    onOpenWgTunnel: () -> Unit,
+    onSaveWgRemoteControlKey: (String) -> Unit,
     onTestTailscaleConnect: () -> Unit,
     onTestTailscaleDisconnect: () -> Unit,
     onResetDefaultProfiles: () -> Unit
 ) {
     val scrollState = rememberScrollState()
+    var wgKeyInput by remember(state.wgRemoteControlKey) { mutableStateOf(state.wgRemoteControlKey) }
 
     Column(
         modifier = Modifier
@@ -90,7 +101,7 @@ fun DiagnosticsScreen(
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "Mock Location AppOps, VPN Transport, and Live Provider Telemetry",
+                        text = "Mock Location AppOps, VPN Transport, WG Tunnel Key, and Live Telemetry",
                         color = WarpmoColors.TextSecondary,
                         fontSize = 13.sp
                     )
@@ -199,6 +210,11 @@ fun DiagnosticsScreen(
                 valueColor = if (state.vpnState.isConnected) WarpmoColors.Success else WarpmoColors.TextSecondary
             )
             DiagnosticRow(
+                label = "Detected VPN Owner",
+                value = state.vpnState.ownerBackend?.displayName
+                    ?: if (state.vpnState.isConnected) "Unknown / Other VPN" else "None"
+            )
+            DiagnosticRow(
                 label = "Tunnel Interface",
                 value = state.vpnState.interfaceName ?: "None"
             )
@@ -229,7 +245,58 @@ fun DiagnosticsScreen(
             }
         }
 
-        // Section 3: Live Mock Location Telemetry
+        // Section 3: WG Tunnel Remote Control Authentication
+        DiagnosticsCard(title = "WG Tunnel Remote App Control") {
+            StatusPill(
+                label = if (state.wgRemoteControlKey.isNotBlank()) {
+                    "Remote Control Key: Configured"
+                } else {
+                    "Remote Control Key: Not Configured"
+                },
+                active = state.wgRemoteControlKey.isNotBlank()
+            )
+            Text(
+                text = "WG Tunnel requires a key for START_TUNNEL / STOP_TUNNEL intents. Enable Remote App Control in WG Tunnel → Settings and paste the key below:",
+                color = WarpmoColors.TextSecondary,
+                fontSize = 13.sp
+            )
+            OutlinedTextField(
+                value = wgKeyInput,
+                onValueChange = { wgKeyInput = it },
+                label = { Text("WG Tunnel Remote Control Key", color = WarpmoColors.TextSecondary, fontSize = 12.sp) },
+                placeholder = { Text("Paste key from WG Tunnel settings", color = WarpmoColors.TextMuted, fontSize = 13.sp) },
+                singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(10.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = WarpmoColors.TextPrimary,
+                    unfocusedTextColor = WarpmoColors.TextPrimary,
+                    focusedContainerColor = WarpmoColors.Background,
+                    unfocusedContainerColor = WarpmoColors.Background,
+                    focusedBorderColor = WarpmoColors.FocusRing,
+                    unfocusedBorderColor = WarpmoColors.BorderSubtle,
+                    cursorColor = WarpmoColors.Primary
+                )
+            )
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                WarpmoPrimaryButton(
+                    text = "Save WG Key",
+                    icon = Icons.Rounded.Save,
+                    onClick = { onSaveWgRemoteControlKey(wgKeyInput) }
+                )
+                WarpmoSecondaryButton(
+                    text = "Open WG Tunnel App",
+                    icon = Icons.Rounded.VpnKey,
+                    onClick = onOpenWgTunnel
+                )
+            }
+        }
+
+        // Section 4: Live Mock Location Telemetry
         DiagnosticsCard(title = "Mock Location Injection Telemetry") {
             val mock = state.mockLocationStatus
             DiagnosticRow(
@@ -286,7 +353,7 @@ fun DiagnosticsScreen(
             }
         }
 
-        // Section 4: Profile Maintenance
+        // Section 5: Profile Maintenance
         DiagnosticsCard(title = "Profile Maintenance") {
             Text(
                 text = "Restore the pre-seeded US (New York), UK (London), and AU (Sydney) regional profiles.",

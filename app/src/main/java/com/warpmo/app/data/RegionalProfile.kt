@@ -30,5 +30,6 @@ data class RegionalProfile(
 data class ProfileStore(
     val schemaVersion: Int = 1,
     val initialized: Boolean = false,
-    val profiles: List<RegionalProfile> = emptyList()
+    val profiles: List<RegionalProfile> = emptyList(),
+    val wgRemoteControlKey: String = ""
 )

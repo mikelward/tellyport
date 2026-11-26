@@ -22,11 +22,11 @@ import com.warpmo.app.vpn.VpnConnectionState
 import com.warpmo.app.vpn.VpnController
 import com.warpmo.app.vpn.VpnNetworkMonitor
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -38,6 +38,7 @@ sealed class WarpmoDestination {
 
 data class WarpmoUiState(
     val profiles: List<RegionalProfile> = emptyList(),
+    val wgRemoteControlKey: String = "",
     val mockLocationStatus: MockLocationStatus = MockLocationStatus(),
     val vpnState: VpnConnectionState = VpnConnectionState(),
     val permissionStatus: MockLocationPermissionStatus = MockLocationPermissionStatus(
@@ -56,30 +57,43 @@ class WarpmoViewModel(
     private val profileRepository: ProfileRepository,
     private val vpnController: VpnController,
     private val vpnNetworkMonitor: VpnNetworkMonitor,
-    private val permissionChecker: MockLocationPermissionChecker
+    private val permissionChecker: MockLocationPermissionChecker,
+    private val startMockLocation: (RegionalProfile) -> Unit = { profile ->
+        MockLocationService.start(appContext, profile)
+    },
+    private val stopMockLocation: () -> Unit = {
+        MockLocationService.stop(appContext)
+    },
+    private val vpnStateFlow: StateFlow<VpnConnectionState> = vpnNetworkMonitor.state,
+    private val permissionStatusProvider: () -> MockLocationPermissionStatus = {
+        permissionChecker.checkStatus()
+    },
+    private val vpnWaitTimeoutMs: Long = ProfileActivationCoordinator.DEFAULT_VPN_WAIT_TIMEOUT_MS
 ) : ViewModel() {
 
-    private val vpnConnectedFlow: StateFlow<Boolean> = vpnNetworkMonitor.state
-        .map { it.isConnected }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, vpnNetworkMonitor.state.value.isConnected)
+    private val wgRemoteControlKeyFlow: StateFlow<String> = profileRepository.wgRemoteControlKey
+        .stateIn(viewModelScope, SharingStarted.Eagerly, "")
 
     private val coordinator = ProfileActivationCoordinator(
         vpnController = vpnController,
-        vpnConnectedFlow = vpnConnectedFlow,
-        startMockLocation = { profile -> MockLocationService.start(appContext, profile) },
-        stopMockLocation = { MockLocationService.stop(appContext) }
+        vpnStateFlow = vpnStateFlow,
+        startMockLocation = startMockLocation,
+        stopMockLocation = stopMockLocation,
+        wgRemoteControlKeyProvider = { wgRemoteControlKeyFlow.value },
+        vpnWaitTimeoutMs = vpnWaitTimeoutMs
     )
 
-    private val _permissionStatus = MutableStateFlow(permissionChecker.checkStatus())
+    private val _permissionStatus = MutableStateFlow(permissionStatusProvider())
     private val _destination = MutableStateFlow<WarpmoDestination>(WarpmoDestination.Dashboard)
     private val _bannerMessage = MutableStateFlow<String?>(null)
 
     private var activationJob: Job? = null
+    private var activatingProfileId: String? = null
 
     private val coreFlows = combine(
         profileRepository.profiles,
         MockLocationState.status,
-        vpnNetworkMonitor.state,
+        vpnStateFlow,
         _permissionStatus,
         coordinator.progress
     ) { profiles, mockStatus, vpnState, perms, progress ->
@@ -94,10 +108,12 @@ class WarpmoViewModel(
 
     val uiState: StateFlow<WarpmoUiState> = combine(
         coreFlows,
+        wgRemoteControlKeyFlow,
         _destination,
         _bannerMessage
-    ) { base, destination, banner ->
+    ) { base, wgKey, destination, banner ->
         base.copy(
+            wgRemoteControlKey = wgKey,
             destination = destination,
             bannerMessage = banner
         )
@@ -115,7 +131,7 @@ class WarpmoViewModel(
     }
 
     fun refreshDiagnostics() {
-        _permissionStatus.value = permissionChecker.checkStatus()
+        _permissionStatus.value = permissionStatusProvider()
         vpnNetworkMonitor.refreshState()
     }
 
@@ -153,31 +169,72 @@ class WarpmoViewModel(
             return
         }
 
-        activationJob?.cancel()
+        val previousJob = activationJob
+        activatingProfileId = profile.id
         activationJob = viewModelScope.launch {
+            previousJob?.cancelAndJoin()
             _bannerMessage.value = null
-            coordinator.activate(profile)
+            try {
+                coordinator.activate(profile)
+            } finally {
+                if (activatingProfileId == profile.id) {
+                    activatingProfileId = null
+                }
+            }
         }
     }
 
     fun disconnectAll() {
-        activationJob?.cancel()
+        val pendingJob = activationJob
         activationJob = null
-        coordinator.deactivateAll()
-        _bannerMessage.value = "Stopped mock location and sent VPN disconnect intents."
+        activatingProfileId = null
+        viewModelScope.launch {
+            pendingJob?.cancelAndJoin()
+            coordinator.deactivateAll()
+            _bannerMessage.value = "Stopped mock location and sent VPN disconnect intents."
+        }
     }
 
-    fun saveProfile(profile: RegionalProfile) {
+    fun saveProfile(profile: RegionalProfile, updatedWgRemoteControlKey: String? = null) {
         viewModelScope.launch {
+            if (updatedWgRemoteControlKey != null) {
+                profileRepository.setWgRemoteControlKey(updatedWgRemoteControlKey)
+            }
             profileRepository.upsertProfile(profile)
             _destination.value = WarpmoDestination.Dashboard
             _bannerMessage.value = "Saved profile \"${profile.name}\"."
         }
     }
 
-    fun deleteProfile(profile: RegionalProfile) {
+    fun saveWgRemoteControlKey(key: String) {
         viewModelScope.launch {
-            if (MockLocationState.status.value.activeProfileId == profile.id) {
+            profileRepository.setWgRemoteControlKey(key)
+            _bannerMessage.value = if (key.isBlank()) {
+                "Cleared WG Tunnel remote control key."
+            } else {
+                "Saved WG Tunnel remote control key."
+            }
+        }
+    }
+
+    fun deleteProfile(profile: RegionalProfile) {
+        val isDeletingPendingActivation = activatingProfileId == profile.id ||
+            (coordinator.progress.value as? ActivationProgress.InProgress)?.profileId == profile.id
+        val isDeletingActiveProfile = MockLocationState.status.value.activeProfileId == profile.id
+        val pendingJob = if (isDeletingPendingActivation || isDeletingActiveProfile) {
+            activationJob.also {
+                activationJob = null
+                activatingProfileId = null
+            }
+        } else {
+            null
+        }
+
+        viewModelScope.launch {
+            if (pendingJob != null) {
+                pendingJob.cancelAndJoin()
+            }
+            if (isDeletingPendingActivation || isDeletingActiveProfile) {
                 coordinator.deactivateAll()
             }
             profileRepository.deleteProfile(profile.id)
@@ -198,6 +255,15 @@ class WarpmoViewModel(
             "Opened Tailscale. Pick or verify your Exit Node."
         } else {
             "Tailscale (${VpnController.TAILSCALE_PACKAGE}) is not installed on this device."
+        }
+    }
+
+    fun openWgTunnelApp() {
+        val opened = vpnController.openWgTunnelApp()
+        _bannerMessage.value = if (opened) {
+            "Opened WG Tunnel. Enable Remote App Control in Settings and copy the key."
+        } else {
+            "WG Tunnel (${VpnController.WG_TUNNEL_PACKAGE}) is not installed on this device."
         }
     }
 

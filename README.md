@@ -8,9 +8,9 @@ Warpmo is a Kotlin Android / Android TV application (targeting Google TV Streame
 - **`com.warpmo.app.location`**: `LocationPayloadFactory` (fresh epoch + `elapsedRealtimeNanos` timestamps and subtle < 2m realistic jitter), `MockLocationPermissionChecker` (`AppOpsManager` check, Developer Options deep link, and ADB one-liner), and `MockLocationState`.
 - **`com.warpmo.app.service`**: `MockLocationService` (`foregroundServiceType="location"`) registering both `GPS_PROVIDER` and `NETWORK_PROVIDER` test providers (API 31+ `ProviderProperties` and API 28–30 fallback), pushing fixes every 1000ms, displaying a persistent notification with a "Stop" action, and removing providers in `onDestroy()`.
 - **`com.warpmo.app.vpn`**:
-  - `VpnController`: explicit Tailscale broadcasts (`com.tailscale.ipn.IPNReceiver`: `CONNECT_VPN` / `DISCONNECT_VPN`), WG Tunnel broadcasts (`com.zaneschepke.wireguardautotunnel.action.CONNECT` / `DISCONNECT` with `tunnel_name`), and fallback Tailscale launcher.
-  - `VpnNetworkMonitor`: `ConnectivityManager.NetworkCallback` observing `NetworkCapabilities.TRANSPORT_VPN`.
-  - `ProfileActivationCoordinator`: triggers VPN connect -> starts `MockLocationService` -> waits up to 8s for `TRANSPORT_VPN` (or proceeds immediately if `NONE`) -> launches `targetAppPackage` if `autoLaunchApp` is enabled.
+  - `VpnController`: explicit Tailscale broadcasts (`com.tailscale.ipn.IPNReceiver`: `CONNECT_VPN` / `DISCONNECT_VPN`), authenticated WG Tunnel broadcasts (`com.zaneschepke.wireguardautotunnel.core.broadcast.RemoteControlReceiver`: `START_TUNNEL` / `STOP_TUNNEL` with `key` and `tunnelName` extras), and fallback Tailscale / WG Tunnel launchers.
+  - `VpnNetworkMonitor`: `ConnectivityManager.NetworkCallback` observing `NetworkCapabilities.TRANSPORT_VPN` along with network handle and owner UID detection (API 30+).
+  - `ProfileActivationCoordinator`: coordinates teardown of conflicting VPN connections -> triggers VPN connect -> starts `MockLocationService` -> waits up to 8s for the requested VPN to become ready (or proceeds immediately if `NONE`) -> launches `targetAppPackage` if `autoLaunchApp` is enabled.
 - **`com.warpmo.app.ui`**: D-Pad-first dark-mode TV dashboard (`DashboardScreen`), `DiagnosticsScreen`, and `ProfileEditorScreen` (with location & streaming app presets).
 
 ## Build & Test
@@ -35,3 +35,4 @@ Debug APK output: `app/build/outputs/apk/debug/app-debug.apk`
    ```bash
    adb shell pm grant com.warpmo.app android.permission.ACCESS_FINE_LOCATION
    ```
+4. *(If using WG Tunnel)* Enable **Remote App Control** in WG Tunnel → Settings, copy the generated key, and save it in Warpmo's **Setup & Diagnostics** screen (or while editing a WG Tunnel profile).

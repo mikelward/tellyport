@@ -49,7 +49,8 @@ import java.util.UUID
 @Composable
 fun ProfileEditorScreen(
     existingProfile: RegionalProfile?,
-    onSave: (RegionalProfile) -> Unit,
+    currentWgRemoteControlKey: String,
+    onSave: (RegionalProfile, String?) -> Unit,
     onCancel: () -> Unit
 ) {
     var name by remember(existingProfile) { mutableStateOf(existingProfile?.name ?: "") }
@@ -71,6 +72,9 @@ fun ProfileEditorScreen(
     }
     var vpnTunnelOrNodeName by remember(existingProfile) {
         mutableStateOf(existingProfile?.vpnTunnelOrNodeName ?: "")
+    }
+    var wgRemoteControlKey by remember(currentWgRemoteControlKey) {
+        mutableStateOf(currentWgRemoteControlKey)
     }
     var targetAppPackage by remember(existingProfile) {
         mutableStateOf(existingProfile?.targetAppPackage ?: "")
@@ -137,6 +141,13 @@ fun ProfileEditorScreen(
                         acc <= 0f -> validationError = "Accuracy must be greater than 0 meters."
                         else -> {
                             validationError = null
+                            val updatedKey = if (vpnBackend == VpnBackend.WG_TUNNEL &&
+                                wgRemoteControlKey.trim() != currentWgRemoteControlKey.trim()
+                            ) {
+                                wgRemoteControlKey
+                            } else {
+                                null
+                            }
                             onSave(
                                 RegionalProfile(
                                     id = existingProfile?.id ?: UUID.randomUUID().toString(),
@@ -150,7 +161,8 @@ fun ProfileEditorScreen(
                                     vpnTunnelOrNodeName = vpnTunnelOrNodeName.trim().ifBlank { null },
                                     targetAppPackage = targetAppPackage.trim().ifBlank { null },
                                     autoLaunchApp = autoLaunchApp
-                                )
+                                ),
+                                updatedKey
                             )
                         }
                     }
@@ -285,7 +297,7 @@ fun ProfileEditorScreen(
                     value = vpnTunnelOrNodeName,
                     onValueChange = { vpnTunnelOrNodeName = it },
                     label = if (vpnBackend == VpnBackend.WG_TUNNEL) {
-                        "WG Tunnel Name (passed via tunnel_name extra)"
+                        "WG Tunnel Name (passed via tunnelName extra)"
                     } else {
                         "Tailscale Exit Node Label (reminder)"
                     },
@@ -295,6 +307,17 @@ fun ProfileEditorScreen(
                         "e.g., us-nyc-exit"
                     },
                     modifier = Modifier.fillMaxWidth()
+                )
+            }
+
+            if (vpnBackend == VpnBackend.WG_TUNNEL) {
+                WarpmoTextField(
+                    value = wgRemoteControlKey,
+                    onValueChange = { wgRemoteControlKey = it },
+                    label = "WG Tunnel Remote Control Key (required for START_TUNNEL / STOP_TUNNEL)",
+                    placeholder = "Copy from WG Tunnel → Settings → Remote App Control",
+                    modifier = Modifier.fillMaxWidth(),
+                    isSecret = true
                 )
             }
         }
@@ -385,7 +408,8 @@ private fun WarpmoTextField(
     label: String,
     placeholder: String,
     modifier: Modifier = Modifier,
-    keyboardType: KeyboardType = KeyboardType.Text
+    keyboardType: KeyboardType = KeyboardType.Text,
+    isSecret: Boolean = false
 ) {
     OutlinedTextField(
         value = value,
@@ -393,6 +417,11 @@ private fun WarpmoTextField(
         label = { Text(label, color = WarpmoColors.TextSecondary, fontSize = 12.sp) },
         placeholder = { Text(placeholder, color = WarpmoColors.TextMuted, fontSize = 13.sp) },
         singleLine = true,
+        visualTransformation = if (isSecret) {
+            androidx.compose.ui.text.input.PasswordVisualTransformation()
+        } else {
+            androidx.compose.ui.text.input.VisualTransformation.None
+        },
         keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
         modifier = modifier,
         shape = RoundedCornerShape(10.dp),
