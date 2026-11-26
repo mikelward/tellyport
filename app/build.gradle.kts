@@ -6,11 +6,11 @@ plugins {
 }
 
 android {
-    namespace = "com.warpmo.app"
+    namespace = "tv.tellyport"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.warpmo.app"
+        applicationId = "tv.tellyport"
         minSdk = 28
         targetSdk = 34
         versionCode = 1
