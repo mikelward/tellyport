@@ -32,7 +32,7 @@ data class VpnConnectionState(
  */
 class VpnNetworkMonitor(
     context: Context,
-    private val onVpnLostCallback: (() -> Unit)? = null
+    private val onVpnLostCallback: ((Long?) -> Unit)? = null
 ) {
     private val appContext = context.applicationContext
     private val connectivityManager =
@@ -112,7 +112,7 @@ class VpnNetworkMonitor(
         val cm = connectivityManager ?: run {
             val disconnected = VpnConnectionState()
             _state.value = disconnected
-            if (previous.isConnected) onVpnLostCallback?.invoke()
+            if (previous.isConnected) onVpnLostCallback?.invoke(previous.networkHandle)
             return disconnected
         }
 
@@ -151,7 +151,7 @@ class VpnNetworkMonitor(
 
         _state.value = next
         if (previous.isConnected && !next.isConnected) {
-            onVpnLostCallback?.invoke()
+            onVpnLostCallback?.invoke(previous.networkHandle)
         }
         return next
     }

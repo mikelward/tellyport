@@ -51,9 +51,9 @@ class TellyportApplication : Application() {
 
         vpnNetworkMonitor = VpnNetworkMonitor(
             context = this,
-            onVpnLostCallback = {
+            onVpnLostCallback = { lostNetworkHandle ->
                 applicationScope.launch {
-                    profileRepository.clearActiveSession()
+                    profileRepository.clearActiveSessionIfHandleMatches(lostNetworkHandle)
                 }
             }
         )

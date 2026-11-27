@@ -338,6 +338,25 @@ class ProfileRepository(
         setActiveSession(null)
     }
 
+    /**
+     * Clears [ProfileStore.activeSession] only if it still matches [lostNetworkHandle] (or either
+     * handle is unknown), preventing a delayed `onVpnLost` callback from an older tunnel from
+     * wiping out a newer VPN session that has already connected.
+     */
+    suspend fun clearActiveSessionIfHandleMatches(lostNetworkHandle: Long?) {
+        dataStore.updateData { current ->
+            val session = current.activeSession ?: return@updateData current
+            if (lostNetworkHandle != null &&
+                session.networkHandle != null &&
+                session.networkHandle != lostNetworkHandle
+            ) {
+                current
+            } else {
+                current.copy(activeSession = null)
+            }
+        }
+    }
+
     suspend fun setAutoDisconnectSettings(enabled: Boolean, gracePeriodSeconds: Int) {
         val clampedGrace = gracePeriodSeconds.coerceIn(5, 600)
         dataStore.updateData { current ->

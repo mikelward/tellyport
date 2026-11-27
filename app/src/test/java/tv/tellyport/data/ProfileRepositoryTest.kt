@@ -329,4 +329,35 @@ class ProfileRepositoryTest {
         assertEquals("unifi-au-syd", migrated.tunnelName)
         assertEquals(listOf("com.amazon.avod.thirdpartyclient"), migrated.mappedPackages)
     }
+
+    @Test
+    fun clearActiveSessionIfHandleMatches_preservesNewerSessionWithDifferentHandle() = runTest {
+        val job = SupervisorJob()
+        val scope = CoroutineScope(job + Dispatchers.IO)
+        try {
+            val repo = createRepository("handle_matched_clear.json", scope)
+            val newerSession = ActiveVpnSession(
+                profileId = "preset-sydney",
+                vpnBackend = VpnBackend.WG_TUNNEL,
+                tunnelName = "unifi-au-syd",
+                networkHandle = 200L
+            )
+            repo.setActiveSession(newerSession)
+
+            // Delayed loss callback for an older tunnel (handle 100) must not wipe handle 200.
+            repo.clearActiveSessionIfHandleMatches(lostNetworkHandle = 100L)
+            assertEquals(newerSession, repo.getActiveSessionSnapshot())
+
+            // Loss callback for handle 200 clears it.
+            repo.clearActiveSessionIfHandleMatches(lostNetworkHandle = 200L)
+            assertNull(repo.getActiveSessionSnapshot())
+
+            // Unknown lost handle (null) clears the active session.
+            repo.setActiveSession(newerSession)
+            repo.clearActiveSessionIfHandleMatches(lostNetworkHandle = null)
+            assertNull(repo.getActiveSessionSnapshot())
+        } finally {
+            job.cancelAndJoin()
+        }
+    }
 }
