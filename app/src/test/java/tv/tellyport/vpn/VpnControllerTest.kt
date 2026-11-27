@@ -779,4 +779,92 @@ class VpnControllerTest {
         assertEquals("unifi-au-syd", wgStop.getStringExtra(VpnController.EXTRA_WG_TUNNEL_NAME))
         assertTrue(dispatcher.startedActivities.isEmpty())
     }
+
+    @Test
+    fun noVpnProfile_disconnectsAnotherProfilesTunnelBeforeLaunching() = runTest {
+        val dispatcher = RecordingIntentDispatcher()
+        val vpnState = MutableStateFlow(
+            VpnConnectionState(
+                isConnected = true,
+                networkHandle = 42L,
+                inferredBackend = InferredVpnBackend.UNKNOWN_EXTERNAL
+            )
+        )
+        val mockStatus = MutableStateFlow(MockLocationStatus())
+        var persisted: ActiveVpnSession? = ActiveVpnSession(
+            profileId = "preset-sydney",
+            vpnBackend = VpnBackend.WG_TUNNEL,
+            tunnelName = "unifi-au-syd",
+            networkHandle = 42L
+        )
+        val coordinator = ProfileActivationCoordinator(
+            vpnController = VpnController(dispatcher),
+            vpnStateFlow = vpnState,
+            mockLocationStatusFlow = mockStatus,
+            startMockLocation = autoInjectingMockStarter(mockStatus),
+            stopMockLocation = {},
+            wgRemoteControlKeyProvider = { "wg-key" },
+            persistedSessionProvider = { persisted },
+            persistActiveSession = { persisted = it }
+        )
+        val londonDirect = RegionalProfile(
+            id = "uk-direct",
+            name = "London",
+            regionCode = "UK",
+            latitude = 51.5074,
+            longitude = -0.1278,
+            vpnBackend = VpnBackend.NONE,
+            mappedPackages = listOf("uk.co.bbc.iplayer")
+        )
+
+        assertFalse(coordinator.isProfileCurrentlySatisfied(londonDirect))
+
+        val result = async { coordinator.activate(londonDirect) }
+        runCurrent()
+        assertTrue(dispatcher.startedActivities.isEmpty())
+        val wgStop = dispatcher.broadcasts.last { it.action == VpnController.ACTION_WG_TUNNEL_DISCONNECT }
+        assertEquals("unifi-au-syd", wgStop.getStringExtra(VpnController.EXTRA_WG_TUNNEL_NAME))
+
+        vpnState.value = VpnConnectionState(isConnected = false)
+        assertTrue(result.await() is ActivationProgress.Active)
+        assertNull(persisted)
+        assertEquals(listOf("uk.co.bbc.iplayer"), dispatcher.startedActivities.map { it.`package` })
+        assertTrue(coordinator.isProfileCurrentlySatisfied(londonDirect))
+    }
+
+    @Test
+    fun noVpnProfile_skipsLaunchWhenTunnelStaysUp() = runTest {
+        val dispatcher = RecordingIntentDispatcher()
+        val vpnState = MutableStateFlow(
+            VpnConnectionState(
+                isConnected = true,
+                networkHandle = 7L,
+                inferredBackend = InferredVpnBackend.TAILSCALE
+            )
+        )
+        val mockStatus = MutableStateFlow(MockLocationStatus())
+        val coordinator = ProfileActivationCoordinator(
+            vpnController = VpnController(dispatcher),
+            vpnStateFlow = vpnState,
+            mockLocationStatusFlow = mockStatus,
+            startMockLocation = autoInjectingMockStarter(mockStatus),
+            stopMockLocation = {},
+            teardownWaitTimeoutMs = 4_000L
+        )
+        val londonDirect = RegionalProfile(
+            id = "uk-direct",
+            name = "London",
+            regionCode = "UK",
+            latitude = 51.5074,
+            longitude = -0.1278,
+            vpnBackend = VpnBackend.NONE,
+            mappedPackages = listOf("uk.co.bbc.iplayer")
+        )
+
+        val result = coordinator.activate(londonDirect)
+
+        assertTrue(result is ActivationProgress.Warning)
+        assertTrue(dispatcher.broadcasts.any { it.action == VpnController.ACTION_TAILSCALE_DISCONNECT })
+        assertTrue(dispatcher.startedActivities.isEmpty())
+    }
 }
