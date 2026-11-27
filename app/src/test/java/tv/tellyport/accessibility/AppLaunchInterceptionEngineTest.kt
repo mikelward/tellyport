@@ -707,4 +707,85 @@ class AppLaunchInterceptionEngineTest {
         assertTrue(engine.handleWindowStateChanged("uk.co.bbc.iplayer") is InterceptionOutcome.Intercepted)
         assertEquals(2, forceStopper.stoppedPackages.size)
     }
+
+    @Test
+    fun reopeningAppWithinDebounceWindow_afterRegionNoLongerSatisfied_interceptsAgain() = runTest {
+        val dispatcher = FakeDispatcher()
+        val vpnState = MutableStateFlow(VpnConnectionState(isConnected = false))
+        val mockStatus = MutableStateFlow(MockLocationStatus())
+        val forceStopper = FakeForceStopper()
+        var clockMs = 10_000L
+        var persistedSession: ActiveVpnSession? = null
+
+        val londonProfile = RegionalProfile(
+            id = "uk",
+            name = "London",
+            regionCode = "UK",
+            latitude = 51.5074,
+            longitude = -0.1278,
+            vpnBackend = VpnBackend.TAILSCALE,
+            mappedPackages = listOf("uk.co.bbc.iplayer")
+        )
+
+        val coordinator = ProfileActivationCoordinator(
+            vpnController = VpnController(dispatcher),
+            vpnStateFlow = vpnState,
+            mockLocationStatusFlow = mockStatus,
+            startMockLocation = { profile, sid ->
+                mockStatus.value = MockLocationStatus(
+                    isActive = true,
+                    sessionId = sid,
+                    activeProfileId = profile.id,
+                    activeProfileName = profile.name,
+                    configuredLatitude = profile.latitude,
+                    configuredLongitude = profile.longitude,
+                    configuredAltitude = profile.altitude,
+                    configuredAccuracyMeters = profile.accuracyMeters,
+                    injectionCount = 1L
+                )
+            },
+            stopMockLocation = { mockStatus.value = MockLocationStatus() },
+            persistedSessionProvider = { persistedSession },
+            persistActiveSession = { persistedSession = it },
+            stabilizationDelayMs = 0L
+        )
+
+        val engine = AppLaunchInterceptionEngine(
+            scope = this,
+            profilesProvider = { listOf(londonProfile) },
+            autoDisconnectSettingsProvider = { AutoDisconnectSettings(enabled = false) },
+            hasActiveSessionOrVpn = { vpnState.value.isConnected },
+            coordinator = coordinator,
+            forceStopper = forceStopper,
+            performGlobalHomeAction = { true },
+            clockElapsedMs = { clockMs },
+            relaunchDebounceMs = 4_000L
+        )
+
+        // First launch connects Tailscale and relaunches iPlayer.
+        val firstLaunch = async { engine.handleWindowStateChanged("uk.co.bbc.iplayer") }
+        runCurrent()
+        vpnState.value = VpnConnectionState(
+            isConnected = true,
+            networkHandle = 101L,
+            inferredBackend = InferredVpnBackend.TAILSCALE
+        )
+        assertTrue(firstLaunch.await() is InterceptionOutcome.Intercepted)
+
+        // VPN drops (or another region took over) 1.5s later — still inside the 4s debounce window.
+        clockMs += 1_500L
+        vpnState.value = VpnConnectionState(isConnected = false)
+        persistedSession = null
+
+        // Reopening iPlayer must intercept and reconnect instead of debouncing onto the wrong region.
+        val secondLaunch = async { engine.handleWindowStateChanged("uk.co.bbc.iplayer") }
+        runCurrent()
+        vpnState.value = VpnConnectionState(
+            isConnected = true,
+            networkHandle = 102L,
+            inferredBackend = InferredVpnBackend.TAILSCALE
+        )
+        assertTrue(secondLaunch.await() is InterceptionOutcome.Intercepted)
+        assertEquals(2, forceStopper.stoppedPackages.size)
+    }
 }

@@ -170,18 +170,6 @@ class AppLaunchInterceptionEngine(
                 return InterceptionOutcome.Debounced
             }
 
-            // Only apply relaunch debounce when we are NOT superseding a distinct in-flight app.
-            val supersedingDistinctApp = activeJob != null && inFlightPackage != packageName
-            if (!supersedingDistinctApp) {
-                val lastRelaunch = synchronized(recentRelaunchTimestamps) {
-                    recentRelaunchTimestamps[packageName]
-                }
-                if (isWithinRelaunchDebounce(lastRelaunch)) {
-                    lastForegroundPackage = packageName
-                    return InterceptionOutcome.Debounced
-                }
-            }
-
             inFlightPackage = packageName
             inFlightJob = myJob
             activeJob
@@ -203,19 +191,19 @@ class AppLaunchInterceptionEngine(
                     return@withLock InterceptionOutcome.Debounced
                 }
 
-                // Double-check debounce inside the lock when not superseding a distinct app.
-                if (jobToSupersede == null) {
-                    val lockedLastRelaunch = synchronized(recentRelaunchTimestamps) {
-                        recentRelaunchTimestamps[packageName]
-                    }
-                    if (isWithinRelaunchDebounce(lockedLastRelaunch)) {
-                        lastForegroundPackage = packageName
-                        return@withLock InterceptionOutcome.Debounced
-                    }
-                }
-
                 if (coordinator.isProfileCurrentlySatisfied(matchedProfile)) {
                     lastForegroundPackage = packageName
+                    // Debounce our own immediate relaunch event without showing a toast, but only
+                    // while the profile is still satisfied so a dropped VPN or region switch never
+                    // lets the app open on the wrong region.
+                    if (jobToSupersede == null) {
+                        val lockedLastRelaunch = synchronized(recentRelaunchTimestamps) {
+                            recentRelaunchTimestamps[packageName]
+                        }
+                        if (isWithinRelaunchDebounce(lockedLastRelaunch)) {
+                            return@withLock InterceptionOutcome.Debounced
+                        }
+                    }
                     if (previousPackage != packageName) {
                         showToast("Already connected to ${matchedProfile.name}")
                     }
