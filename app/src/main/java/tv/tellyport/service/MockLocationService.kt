@@ -115,7 +115,9 @@ class MockLocationService : Service() {
                     altitude = altitude,
                     accuracyMeters = accuracy
                 )
-                return START_STICKY
+                // Redeliver the start intent if the process is killed so spoofing resumes for the
+                // same profile instead of restarting with a null intent and silently stopping.
+                return START_REDELIVER_INTENT
             }
 
             else -> {
