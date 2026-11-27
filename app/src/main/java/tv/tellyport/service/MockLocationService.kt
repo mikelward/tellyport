@@ -300,7 +300,27 @@ class MockLocationService : Service() {
         }
     }
 
-    private fun registerTestProvider(
+    internal var addAndEnableProvider: (LocationManager, String) -> Unit = { manager, provider ->
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val properties = ProviderProperties.Builder()
+                .setHasNetworkRequirement(false)
+                .setHasSatelliteRequirement(false)
+                .setHasCellRequirement(false)
+                .setHasMonetaryCost(false)
+                .setHasAltitudeSupport(true)
+                .setHasSpeedSupport(true)
+                .setHasBearingSupport(true)
+                .setPowerUsage(ProviderProperties.POWER_USAGE_LOW)
+                .setAccuracy(ProviderProperties.ACCURACY_FINE)
+                .build()
+            manager.addTestProvider(provider, properties)
+        } else {
+            addLegacyTestProvider(manager, provider)
+        }
+        manager.setTestProviderEnabled(provider, true)
+    }
+
+    internal fun registerTestProvider(
         manager: LocationManager,
         provider: String,
         sessionId: Long
@@ -319,26 +339,16 @@ class MockLocationService : Service() {
 
             if (activeSessionId.get() != sessionId) return false
 
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                val properties = ProviderProperties.Builder()
-                    .setHasNetworkRequirement(false)
-                    .setHasSatelliteRequirement(false)
-                    .setHasCellRequirement(false)
-                    .setHasMonetaryCost(false)
-                    .setHasAltitudeSupport(true)
-                    .setHasSpeedSupport(true)
-                    .setHasBearingSupport(true)
-                    .setPowerUsage(ProviderProperties.POWER_USAGE_LOW)
-                    .setAccuracy(ProviderProperties.ACCURACY_FINE)
-                    .build()
-                manager.addTestProvider(provider, properties)
-            } else {
-                addLegacyTestProvider(manager, provider)
+            return try {
+                addAndEnableProvider(manager, provider)
+                registeredProviders.add(provider)
+                true
+            } catch (sec: SecurityException) {
+                throw sec
+            } catch (ex: Exception) {
+                Log.w(TAG, "Failed to register $provider test provider", ex)
+                false
             }
-
-            manager.setTestProviderEnabled(provider, true)
-            registeredProviders.add(provider)
-            return true
         }
     }
 
@@ -541,7 +551,23 @@ class MockLocationService : Service() {
                 )
                 return
             }
-            ContextCompat.startForegroundService(context, buildStartIntent(context, profile, sessionId))
+            try {
+                ContextCompat.startForegroundService(context, buildStartIntent(context, profile, sessionId))
+            } catch (ex: IllegalStateException) {
+                Log.w(TAG, "Unable to start mock location foreground service", ex)
+                MockLocationState.markInactive(
+                    errorMessage = "Android blocked starting mock location in the background. Open Tellyport and try again.",
+                    mockPermissionDenied = !permissionChecker.isMockLocationAllowed(),
+                    failedSessionId = sessionId
+                )
+            } catch (sec: SecurityException) {
+                Log.w(TAG, "SecurityException starting mock location foreground service", sec)
+                MockLocationState.markInactive(
+                    errorMessage = "Foreground location service denied: ${sec.message}",
+                    mockPermissionDenied = !permissionChecker.isMockLocationAllowed(),
+                    failedSessionId = sessionId
+                )
+            }
         }
 
         fun stop(context: Context) {
