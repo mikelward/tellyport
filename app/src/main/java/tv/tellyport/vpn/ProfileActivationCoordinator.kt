@@ -54,7 +54,7 @@ class ProfileActivationCoordinator(
     private val mockLocationStatusFlow: StateFlow<MockLocationStatus>,
     private val startMockLocation: (RegionalProfile, Long) -> Unit,
     private val stopMockLocation: () -> Unit,
-    private val wgRemoteControlKeyProvider: () -> String = { "" },
+    private val wgRemoteControlKeyProvider: suspend () -> String = { "" },
     private val persistedSessionProvider: suspend () -> ActiveVpnSession? = { null },
     private val persistActiveSession: suspend (ActiveVpnSession?) -> Unit = {},
     private val teardownWaitTimeoutMs: Long = DEFAULT_TEARDOWN_WAIT_TIMEOUT_MS,

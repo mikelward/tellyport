@@ -4,9 +4,7 @@ import android.app.Application
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import tv.tellyport.data.ProfileRepository
 import tv.tellyport.location.MockLocationPermissionChecker
@@ -44,17 +42,12 @@ class TellyportApplication : Application() {
     lateinit var activationCoordinator: ProfileActivationCoordinator
         private set
 
-    private lateinit var wgRemoteControlKeyFlow: StateFlow<String>
-
     override fun onCreate() {
         super.onCreate()
         profileRepository = ProfileRepository.create(this, applicationScope)
         vpnController = VpnController(this)
         permissionChecker = MockLocationPermissionChecker(this)
         shizukuForceStopper = ShizukuForceStopper(this)
-
-        wgRemoteControlKeyFlow = profileRepository.wgRemoteControlKey
-            .stateIn(applicationScope, SharingStarted.Eagerly, "")
 
         vpnNetworkMonitor = VpnNetworkMonitor(
             context = this,
@@ -77,7 +70,9 @@ class TellyportApplication : Application() {
             stopMockLocation = {
                 MockLocationService.stop(applicationContext)
             },
-            wgRemoteControlKeyProvider = { wgRemoteControlKeyFlow.value },
+            // Read from DataStore on demand: a cached StateFlow starts as "" and would report the
+            // key as missing for activations right after a cold start (e.g. boot interception).
+            wgRemoteControlKeyProvider = { profileRepository.wgRemoteControlKey.first() },
             persistedSessionProvider = { profileRepository.getActiveSessionSnapshot() },
             persistActiveSession = { session -> profileRepository.setActiveSession(session) }
         )
