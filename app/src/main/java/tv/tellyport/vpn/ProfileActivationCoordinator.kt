@@ -118,7 +118,8 @@ class ProfileActivationCoordinator(
         val liveVpn = refreshLiveVpnState()
         val persisted = persistedSessionProvider()
         val vpnSatisfied = when (profile.vpnBackend) {
-            VpnBackend.NONE -> true
+            // A live tunnel means traffic is not on the direct connection a No VPN profile expects.
+            VpnBackend.NONE -> !liveVpn.isConnected
             else -> isVpnAlreadySatisfied(liveVpn, persisted, profile)
         }
         if (!vpnSatisfied) return false
@@ -199,14 +200,25 @@ class ProfileActivationCoordinator(
             null
         }
 
-        // Fast path for profiles with VpnBackend.NONE (mock location only).
+        // Profiles with VpnBackend.NONE use the direct connection: tear down any live tunnel
+        // (e.g. another profile's region) so the app never launches through the wrong region.
         if (profile.vpnBackend == VpnBackend.NONE) {
+            val directReady = if (liveVpn.isConnected) {
+                _progress.value = ActivationProgress.InProgress(
+                    profileId = profile.id,
+                    message = "Disconnecting VPN for ${profile.name}..."
+                )
+                disconnectLiveVpn(persistedSession, wgKey)
+            } else {
+                stopStalePendingWgTunnel(profile, wgKey)
+                true
+            }
             val mockResult = ensureMockLocationRunning(profile)
             return finishWithOptionalLaunch(
                 profile = profile,
                 targetPackage = targetPackage,
                 clearTaskOnLaunch = clearTaskOnLaunch,
-                vpnReady = true,
+                vpnReady = directReady && !refreshLiveVpnState().isConnected,
                 mockResult = mockResult
             )
         }
@@ -262,38 +274,11 @@ class ProfileActivationCoordinator(
                 profileId = profile.id,
                 message = "Disconnecting previous VPN before connecting ${profile.vpnBackend.displayName}..."
             )
-            val wgTunnelsToStop = buildList<String?> {
-                add(null) // primary/default WG tunnel
-                persistedSession?.takeIf { it.vpnBackend == VpnBackend.WG_TUNNEL }?.tunnelName?.let { add(it) }
-                pendingWgTunnelName?.let { add(it) }
-            }
-            vpnController.disconnectAll(
-                wgTunnelNames = wgTunnelsToStop,
-                wgRemoteControlKey = wgKey,
-                includeSocksWrapper = persistedSession?.vpnBackend == VpnBackend.SOCKS_WRAPPER
-            )
-            pendingWgTunnelName = null
-            persistActiveSession(null)
-
-            val dropped = withTimeoutOrNull(teardownWaitTimeoutMs) {
-                vpnStateFlow.first { state -> !state.isConnected }
-            }
-            if (dropped != null) {
+            if (disconnectLiveVpn(persistedSession, wgKey)) {
                 sawDisconnect = true
             }
         } else {
-            // Stop any lingering pending WG tunnel that differs from this profile.
-            val stalePendingWg = pendingWgTunnelName
-            if (stalePendingWg != null &&
-                (profile.vpnBackend != VpnBackend.WG_TUNNEL || stalePendingWg != normalizedTunnel(profile))
-            ) {
-                vpnController.disconnect(
-                    backend = VpnBackend.WG_TUNNEL,
-                    tunnelName = stalePendingWg,
-                    wgRemoteControlKey = wgKey
-                )
-                pendingWgTunnelName = null
-            }
+            stopStalePendingWgTunnel(profile, wgKey)
         }
 
         // Step 4: Connect Path — record pending WG tunnel BEFORE sending START_TUNNEL.
@@ -368,6 +353,47 @@ class ProfileActivationCoordinator(
             vpnReady = vpnReady,
             mockResult = mockResult
         )
+    }
+
+    /**
+     * Broadcasts disconnect to Tailscale plus the default, persisted, and pending WG tunnels
+     * (and SOCKS Wrapper when it owns the persisted session), clears the persisted session,
+     * and waits up to [teardownWaitTimeoutMs] for `TRANSPORT_VPN` to drop.
+     *
+     * @return `true` if the VPN dropped within the timeout.
+     */
+    private suspend fun disconnectLiveVpn(persistedSession: ActiveVpnSession?, wgKey: String): Boolean {
+        val wgTunnelsToStop = buildList<String?> {
+            add(null) // primary/default WG tunnel
+            persistedSession?.takeIf { it.vpnBackend == VpnBackend.WG_TUNNEL }?.tunnelName?.let { add(it) }
+            pendingWgTunnelName?.let { add(it) }
+        }
+        vpnController.disconnectAll(
+            wgTunnelNames = wgTunnelsToStop,
+            wgRemoteControlKey = wgKey,
+            includeSocksWrapper = persistedSession?.vpnBackend == VpnBackend.SOCKS_WRAPPER
+        )
+        pendingWgTunnelName = null
+        persistActiveSession(null)
+
+        val dropped = withTimeoutOrNull(teardownWaitTimeoutMs) {
+            vpnStateFlow.first { state -> !state.isConnected }
+        }
+        return dropped != null
+    }
+
+    /**
+     * Stops a lingering pending WG tunnel that differs from [profile]'s tunnel.
+     */
+    private fun stopStalePendingWgTunnel(profile: RegionalProfile, wgKey: String) {
+        val stalePendingWg = pendingWgTunnelName ?: return
+        if (profile.vpnBackend == VpnBackend.WG_TUNNEL && stalePendingWg == normalizedTunnel(profile)) return
+        vpnController.disconnect(
+            backend = VpnBackend.WG_TUNNEL,
+            tunnelName = stalePendingWg,
+            wgRemoteControlKey = wgKey
+        )
+        pendingWgTunnelName = null
     }
 
     private fun revalidateConnectedVpn(
@@ -561,6 +587,15 @@ class ProfileActivationCoordinator(
         vpnReady: Boolean,
         mockResult: MockWaitResult
     ): ActivationProgress {
+        if (!vpnReady && profile.vpnBackend == VpnBackend.NONE) {
+            val warning = ActivationProgress.Warning(
+                profileId = profile.id,
+                message = "A VPN is still connected, so ${profile.name} can't use a direct connection. App launch skipped."
+            )
+            _progress.value = warning
+            return warning
+        }
+
         if (!vpnReady && mockResult is MockWaitResult.Failed) {
             val warning = ActivationProgress.Warning(
                 profileId = profile.id,
