@@ -14,6 +14,7 @@ import android.location.LocationManager
 import android.location.provider.ProviderProperties
 import android.os.Build
 import android.os.IBinder
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import tv.tellyport.MainActivity
@@ -79,7 +80,7 @@ class MockLocationService : Service() {
                 val permissionChecker = MockLocationPermissionChecker(this)
                 if (!permissionChecker.hasFineLocationPermission()) {
                     MockLocationState.markInactive(
-                        errorMessage = "Fine location permission is required before starting Android 14 location service.",
+                        errorMessage = FINE_LOCATION_REQUIRED_MESSAGE,
                         mockPermissionDenied = !permissionChecker.isMockLocationAllowed(),
                         failedSessionId = sessionId
                     )
@@ -498,6 +499,9 @@ class MockLocationService : Service() {
         const val CHANNEL_ID = "tellyport_mock_location"
         const val NOTIFICATION_ID = 4201
         const val UPDATE_INTERVAL_MS = 1_000L
+        private const val TAG = "MockLocationService"
+        internal const val FINE_LOCATION_REQUIRED_MESSAGE =
+            "Allow Tellyport's location permission to use mock location."
 
         fun buildStartIntent(
             context: Context,
@@ -523,6 +527,18 @@ class MockLocationService : Service() {
         }
 
         fun start(context: Context, profile: RegionalProfile, sessionId: Long = 0L) {
+            // Check before startForegroundService: a service started that way that stops without
+            // calling startForeground (which needs this permission) crashes the whole app.
+            val permissionChecker = MockLocationPermissionChecker(context)
+            if (!permissionChecker.hasFineLocationPermission()) {
+                Log.w(TAG, "Not starting mock location: fine location permission missing")
+                MockLocationState.markInactive(
+                    errorMessage = FINE_LOCATION_REQUIRED_MESSAGE,
+                    mockPermissionDenied = !permissionChecker.isMockLocationAllowed(),
+                    failedSessionId = sessionId
+                )
+                return
+            }
             ContextCompat.startForegroundService(context, buildStartIntent(context, profile, sessionId))
         }
 
