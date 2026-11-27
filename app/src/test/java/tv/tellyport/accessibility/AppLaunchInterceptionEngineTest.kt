@@ -561,4 +561,96 @@ class AppLaunchInterceptionEngineTest {
         assertTrue(mockStatus.value.isActive)
         assertEquals(listOf("com.cbs.ott"), dispatcher.startedActivities.map { it.`package` })
     }
+
+    private fun autoDisconnectEngine(
+        scope: kotlinx.coroutines.CoroutineScope,
+        settingsProvider: suspend () -> AutoDisconnectSettings,
+        onDeactivate: () -> Unit
+    ): AppLaunchInterceptionEngine {
+        val vpnState = MutableStateFlow(
+            VpnConnectionState(isConnected = true, networkHandle = 1L, inferredBackend = InferredVpnBackend.TAILSCALE)
+        )
+        val coordinator = ProfileActivationCoordinator(
+            vpnController = VpnController(FakeDispatcher()),
+            vpnStateFlow = vpnState,
+            mockLocationStatusFlow = MutableStateFlow(MockLocationStatus()),
+            startMockLocation = { _, _ -> },
+            stopMockLocation = onDeactivate
+        )
+        return AppLaunchInterceptionEngine(
+            scope = scope,
+            profilesProvider = { emptyList() },
+            autoDisconnectSettingsProvider = settingsProvider,
+            hasActiveSessionOrVpn = { true },
+            coordinator = coordinator,
+            forceStopper = FakeForceStopper(),
+            performGlobalHomeAction = { true }
+        )
+    }
+
+    @Test
+    fun leavingHomeWhileSettingsLoad_doesNotAutoDisconnect() = runTest {
+        val settingsGate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        var deactivations = 0
+        val engine = autoDisconnectEngine(
+            scope = this,
+            settingsProvider = {
+                settingsGate.await()
+                AutoDisconnectSettings(enabled = true, gracePeriodSeconds = 5)
+            },
+            onDeactivate = { deactivations++ }
+        )
+
+        val home = async {
+            engine.handleEvent(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED, "com.google.android.apps.tv.launcherx")
+        }
+        runCurrent()
+        engine.handleEvent(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED, "com.unmapped.app")
+        settingsGate.complete(Unit)
+        home.await()
+
+        advanceTimeBy(10_000L)
+        runCurrent()
+        assertEquals(0, deactivations)
+    }
+
+    @Test
+    fun homeEventHandledAfterNewerAppEvent_doesNotAutoDisconnect() = runTest {
+        var deactivations = 0
+        val engine = autoDisconnectEngine(
+            scope = this,
+            settingsProvider = { AutoDisconnectSettings(enabled = true, gracePeriodSeconds = 5) },
+            onDeactivate = { deactivations++ }
+        )
+        val homeSequence = engine.nextEventSequence()
+        val appSequence = engine.nextEventSequence()
+
+        engine.handleEvent(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED, "com.unmapped.app", appSequence)
+        val homeOutcome = engine.handleEvent(
+            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
+            "com.google.android.apps.tv.launcherx",
+            homeSequence
+        )
+
+        assertEquals(InterceptionOutcome.Ignored, homeOutcome)
+        advanceTimeBy(10_000L)
+        runCurrent()
+        assertEquals(0, deactivations)
+    }
+
+    @Test
+    fun stayingOnHome_autoDisconnectsAfterGracePeriod() = runTest {
+        var deactivations = 0
+        val engine = autoDisconnectEngine(
+            scope = this,
+            settingsProvider = { AutoDisconnectSettings(enabled = true, gracePeriodSeconds = 5) },
+            onDeactivate = { deactivations++ }
+        )
+
+        engine.handleEvent(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED, "com.google.android.apps.tv.launcherx")
+        engine.handleEvent(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED, "com.google.android.apps.tv.launcherx")
+        advanceTimeBy(6_000L)
+        runCurrent()
+        assertEquals(1, deactivations)
+    }
 }
