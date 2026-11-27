@@ -867,4 +867,41 @@ class VpnControllerTest {
         assertTrue(dispatcher.broadcasts.any { it.action == VpnController.ACTION_TAILSCALE_DISCONNECT })
         assertTrue(dispatcher.startedActivities.isEmpty())
     }
+
+    @Test
+    fun wgActivation_waitsForStoredRemoteControlKey() = runTest {
+        val dispatcher = RecordingIntentDispatcher()
+        val vpnState = MutableStateFlow(VpnConnectionState(isConnected = false))
+        val mockStatus = MutableStateFlow(MockLocationStatus())
+        val storedKey = kotlinx.coroutines.CompletableDeferred<String>()
+        val coordinator = ProfileActivationCoordinator(
+            vpnController = VpnController(dispatcher),
+            vpnStateFlow = vpnState,
+            mockLocationStatusFlow = mockStatus,
+            startMockLocation = autoInjectingMockStarter(mockStatus),
+            stopMockLocation = {},
+            // Simulates DataStore still loading right after a cold start.
+            wgRemoteControlKeyProvider = { storedKey.await() }
+        )
+        val sydneyWg = RegionalProfile(
+            id = "preset-sydney",
+            name = "Sydney",
+            regionCode = "AU",
+            latitude = -33.8688,
+            longitude = 151.2093,
+            vpnBackend = VpnBackend.WG_TUNNEL,
+            tunnelName = "unifi-au-syd",
+            autoLaunchApp = false
+        )
+
+        val result = async { coordinator.activate(sydneyWg) }
+        runCurrent()
+        storedKey.complete("stored-key")
+        runCurrent()
+
+        val wgStart = dispatcher.broadcasts.single { it.action == VpnController.ACTION_WG_TUNNEL_CONNECT }
+        assertEquals("stored-key", wgStart.getStringExtra(VpnController.EXTRA_WG_REMOTE_KEY))
+        vpnState.value = VpnConnectionState(isConnected = true, networkHandle = 9L)
+        assertTrue(result.await() is ActivationProgress.Active)
+    }
 }
