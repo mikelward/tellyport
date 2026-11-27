@@ -21,6 +21,7 @@ import tv.tellyport.shizuku.PackageForceStopper
 import tv.tellyport.vpn.ActivationProgress
 import tv.tellyport.vpn.ProfileActivationCoordinator
 import tv.tellyport.vpn.VpnController
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Outcome returned by [AppLaunchInterceptionEngine.handleWindowStateChanged] for observability
@@ -63,7 +64,10 @@ class AppLaunchInterceptionEngine(
     private val interceptionMutex = Mutex()
     private val flightLock = Any()
     private val recentRelaunchTimestamps = mutableMapOf<String, Long>()
+    private val homeTimerLock = Any()
     private var homeDisconnectJob: Job? = null
+    private val eventSequence = AtomicLong(0L)
+    private var latestForegroundSequence = 0L
 
     private var inFlightPackage: String? = null
     private var inFlightJob: Job? = null
@@ -75,16 +79,30 @@ class AppLaunchInterceptionEngine(
     val lastInterceptedSummary: StateFlow<String?> = _lastInterceptedSummary.asStateFlow()
 
     /**
+     * Allocates the ordering sequence for an event. Call it synchronously where the event is
+     * received (before dispatching to a concurrent scope) so events handled out of order can
+     * be recognized as stale.
+     */
+    fun nextEventSequence(): Long = eventSequence.incrementAndGet()
+
+    /**
      * Entry point called from [AppLaunchAccessibilityService.onAccessibilityEvent].
      */
-    suspend fun handleEvent(eventType: Int, packageName: String?): InterceptionOutcome {
+    suspend fun handleEvent(
+        eventType: Int,
+        packageName: String?,
+        sequence: Long = nextEventSequence()
+    ): InterceptionOutcome {
         if (eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             return InterceptionOutcome.Ignored
         }
-        return handleWindowStateChanged(packageName)
+        return handleWindowStateChanged(packageName, sequence)
     }
 
-    suspend fun handleWindowStateChanged(rawPackageName: String?): InterceptionOutcome {
+    suspend fun handleWindowStateChanged(
+        rawPackageName: String?,
+        sequence: Long = nextEventSequence()
+    ): InterceptionOutcome {
         val packageName = rawPackageName?.trim().orEmpty()
         if (packageName.isEmpty()) return InterceptionOutcome.Ignored
 
@@ -93,6 +111,18 @@ class AppLaunchInterceptionEngine(
         if (packageName in TRANSIENT_OVERLAY_PACKAGES) {
             return InterceptionOutcome.Ignored
         }
+
+        // Drop window events that were overtaken by a newer foreground event, so a stale Home
+        // event can't schedule an auto-disconnect while the user is already in an app.
+        val isLatest = synchronized(homeTimerLock) {
+            if (sequence < latestForegroundSequence) {
+                false
+            } else {
+                latestForegroundSequence = sequence
+                true
+            }
+        }
+        if (!isLatest) return InterceptionOutcome.Ignored
 
         // Handle returning to the Google TV / Android TV Home Launcher.
         if (isHomeLauncher(packageName)) {
@@ -103,7 +133,7 @@ class AppLaunchInterceptionEngine(
                 return InterceptionOutcome.Ignored
             }
             lastForegroundPackage = packageName
-            scheduleHomeAutoDisconnectIfEnabled()
+            scheduleHomeAutoDisconnectIfEnabled(sequence)
             return InterceptionOutcome.HomeGraceTimerScheduled
         }
 
@@ -256,15 +286,17 @@ class AppLaunchInterceptionEngine(
     }
 
     fun cancelHomeAutoDisconnectTimer() {
-        homeDisconnectJob?.cancel()
-        homeDisconnectJob = null
+        synchronized(homeTimerLock) {
+            homeDisconnectJob?.cancel()
+            homeDisconnectJob = null
+        }
     }
 
     private fun isInterceptionInFlight(): Boolean = synchronized(flightLock) {
         inFlightJob?.isActive == true
     }
 
-    private suspend fun scheduleHomeAutoDisconnectIfEnabled() {
+    private suspend fun scheduleHomeAutoDisconnectIfEnabled(homeSequence: Long) {
         if (isInterceptionInFlight()) {
             cancelHomeAutoDisconnectTimer()
             return
@@ -278,16 +310,20 @@ class AppLaunchInterceptionEngine(
             cancelHomeAutoDisconnectTimer()
             return
         }
-        if (homeDisconnectJob?.isActive == true) {
-            // Grace timer already running while user remains on the Home Launcher.
-            return
-        }
         val delayMs = settings.gracePeriodSeconds.coerceAtLeast(1) * 1_000L
-        homeDisconnectJob = scope.launch {
-            delay(delayMs)
-            if (!isInterceptionInFlight() && hasActiveSessionOrVpn()) {
-                coordinator.deactivateAll()
-                _lastInterceptedSummary.value = "Auto-disconnected after ${settings.gracePeriodSeconds}s on Home Launcher"
+        synchronized(homeTimerLock) {
+            // The user left Home (e.g. opened an app) while the settings were being read.
+            if (latestForegroundSequence != homeSequence) return
+            if (homeDisconnectJob?.isActive == true) {
+                // Grace timer already running while user remains on the Home Launcher.
+                return
+            }
+            homeDisconnectJob = scope.launch {
+                delay(delayMs)
+                if (!isInterceptionInFlight() && hasActiveSessionOrVpn()) {
+                    coordinator.deactivateAll()
+                    _lastInterceptedSummary.value = "Auto-disconnected after ${settings.gracePeriodSeconds}s on Home Launcher"
+                }
             }
         }
     }

@@ -109,8 +109,10 @@ class AppLaunchAccessibilityService : AccessibilityService() {
         val pkg = event.packageName?.toString() ?: return
         val currentEngine = engine ?: return
 
+        // Sequence events here, in delivery order, since serviceScope handles them concurrently.
+        val sequence = currentEngine.nextEventSequence()
         serviceScope.launch {
-            currentEngine.handleEvent(eventType, pkg)
+            currentEngine.handleEvent(eventType, pkg, sequence)
         }
     }
 
