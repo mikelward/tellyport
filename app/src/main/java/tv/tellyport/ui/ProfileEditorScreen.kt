@@ -201,15 +201,15 @@ fun ProfileEditorScreen(
                 onClick = {
                     val lat = latitudeText.trim().toDoubleOrNull()
                     val lon = longitudeText.trim().toDoubleOrNull()
-                    val alt = altitudeText.trim().toDoubleOrNull() ?: 10.0
-                    val acc = accuracyText.trim().toFloatOrNull() ?: 5.0f
+                    val alt = altitudeText.trim().toDoubleOrNull()
+                    val acc = accuracyText.trim().toFloatOrNull()
+                    val coordinateError = coordinateFieldsError(lat, lon, alt, acc)
 
                     when {
                         name.isBlank() -> validationError = "Profile name is required."
                         regionCode.isBlank() -> validationError = "Region code is required (e.g., US, UK, AU)."
-                        lat == null || lat !in -90.0..90.0 -> validationError = "Latitude must be between -90 and 90."
-                        lon == null || lon !in -180.0..180.0 -> validationError = "Longitude must be between -180 and 180."
-                        acc <= 0f -> validationError = "Accuracy must be greater than 0 meters."
+                        coordinateError != null || lat == null || lon == null || alt == null || acc == null ->
+                            validationError = coordinateError
                         vpnBackend == VpnBackend.TAILSCALE && tailscaleBlocked -> {
                             validationError = ProfileRepository.SINGLE_TAILSCALE_MESSAGE
                         }
@@ -683,4 +683,23 @@ private fun TellyportTextField(
             cursorColor = TellyportColors.Primary
         )
     )
+}
+
+/**
+ * Returns the error to show for the editor's coordinate fields, or `null` when they are all
+ * valid. Unparseable or non-finite values are rejected instead of defaulted, so a typo never
+ * silently saves different coordinates.
+ */
+internal fun coordinateFieldsError(
+    latitude: Double?,
+    longitude: Double?,
+    altitude: Double?,
+    accuracyMeters: Float?
+): String? = when {
+    latitude == null || latitude !in -90.0..90.0 -> "Latitude must be between -90 and 90."
+    longitude == null || longitude !in -180.0..180.0 -> "Longitude must be between -180 and 180."
+    altitude == null || !altitude.isFinite() -> "Altitude must be a number of meters."
+    accuracyMeters == null || !accuracyMeters.isFinite() || accuracyMeters <= 0f ->
+        "Accuracy must be greater than 0 meters."
+    else -> null
 }
