@@ -1,5 +1,6 @@
 package tv.tellyport.accessibility
 
+import android.os.SystemClock
 import android.view.accessibility.AccessibilityEvent
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -57,7 +58,8 @@ class AppLaunchInterceptionEngine(
     private val forceStopper: PackageForceStopper,
     private val performGlobalHomeAction: () -> Boolean,
     private val showToast: (String) -> Unit = {},
-    private val clockElapsedMs: () -> Long = { System.currentTimeMillis() },
+    // Monotonic: a wall-clock jump (e.g. NTP sync after boot) must not suppress interception.
+    private val clockElapsedMs: () -> Long = { SystemClock.elapsedRealtime() },
     private val relaunchDebounceMs: Long = DEFAULT_RELAUNCH_DEBOUNCE_MS,
     private val additionalLauncherPackages: Set<String> = emptySet()
 ) {
@@ -171,11 +173,10 @@ class AppLaunchInterceptionEngine(
             // Only apply relaunch debounce when we are NOT superseding a distinct in-flight app.
             val supersedingDistinctApp = activeJob != null && inFlightPackage != packageName
             if (!supersedingDistinctApp) {
-                val now = clockElapsedMs()
                 val lastRelaunch = synchronized(recentRelaunchTimestamps) {
                     recentRelaunchTimestamps[packageName]
                 }
-                if (lastRelaunch != null && (now - lastRelaunch) < relaunchDebounceMs) {
+                if (isWithinRelaunchDebounce(lastRelaunch)) {
                     lastForegroundPackage = packageName
                     return InterceptionOutcome.Debounced
                 }
@@ -204,11 +205,10 @@ class AppLaunchInterceptionEngine(
 
                 // Double-check debounce inside the lock when not superseding a distinct app.
                 if (jobToSupersede == null) {
-                    val lockedNow = clockElapsedMs()
                     val lockedLastRelaunch = synchronized(recentRelaunchTimestamps) {
                         recentRelaunchTimestamps[packageName]
                     }
-                    if (lockedLastRelaunch != null && (lockedNow - lockedLastRelaunch) < relaunchDebounceMs) {
+                    if (isWithinRelaunchDebounce(lockedLastRelaunch)) {
                         lastForegroundPackage = packageName
                         return@withLock InterceptionOutcome.Debounced
                     }
@@ -283,6 +283,16 @@ class AppLaunchInterceptionEngine(
                 }
             }
         }
+    }
+
+    /**
+     * Whether our own relaunch at [lastRelaunch] happened within [relaunchDebounceMs]. A clock
+     * that reads earlier than [lastRelaunch] is treated as stale rather than as a recent relaunch.
+     */
+    private fun isWithinRelaunchDebounce(lastRelaunch: Long?): Boolean {
+        if (lastRelaunch == null) return false
+        val elapsed = clockElapsedMs() - lastRelaunch
+        return elapsed in 0 until relaunchDebounceMs
     }
 
     fun cancelHomeAutoDisconnectTimer() {

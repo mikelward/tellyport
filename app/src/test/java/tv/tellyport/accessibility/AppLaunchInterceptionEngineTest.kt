@@ -653,4 +653,58 @@ class AppLaunchInterceptionEngineTest {
         runCurrent()
         assertEquals(1, deactivations)
     }
+
+    @Test
+    fun clockJumpingBackward_doesNotSuppressInterception() = runTest {
+        val dispatcher = FakeDispatcher()
+        val mockStatus = MutableStateFlow(MockLocationStatus())
+        val forceStopper = FakeForceStopper()
+        var clockMs = 1_000_000L
+        val londonDirect = RegionalProfile(
+            id = "uk-direct",
+            name = "London",
+            regionCode = "UK",
+            latitude = 51.5074,
+            longitude = -0.1278,
+            vpnBackend = VpnBackend.NONE,
+            mappedPackages = listOf("uk.co.bbc.iplayer")
+        )
+        val coordinator = ProfileActivationCoordinator(
+            vpnController = VpnController(dispatcher),
+            vpnStateFlow = MutableStateFlow(VpnConnectionState()),
+            mockLocationStatusFlow = mockStatus,
+            startMockLocation = { profile, sid ->
+                mockStatus.value = MockLocationStatus(
+                    isActive = true,
+                    sessionId = sid,
+                    activeProfileId = profile.id,
+                    configuredLatitude = profile.latitude,
+                    configuredLongitude = profile.longitude,
+                    configuredAltitude = profile.altitude,
+                    configuredAccuracyMeters = profile.accuracyMeters,
+                    injectionCount = 1L
+                )
+            },
+            stopMockLocation = { mockStatus.value = MockLocationStatus() }
+        )
+        val engine = AppLaunchInterceptionEngine(
+            scope = this,
+            profilesProvider = { listOf(londonDirect) },
+            autoDisconnectSettingsProvider = { AutoDisconnectSettings(enabled = false) },
+            hasActiveSessionOrVpn = { false },
+            coordinator = coordinator,
+            forceStopper = forceStopper,
+            performGlobalHomeAction = { true },
+            clockElapsedMs = { clockMs }
+        )
+
+        assertTrue(engine.handleWindowStateChanged("uk.co.bbc.iplayer") is InterceptionOutcome.Intercepted)
+
+        // Mock location stops and the clock jumps back an hour; reopening must intercept again.
+        mockStatus.value = MockLocationStatus()
+        clockMs -= 3_600_000L
+        engine.handleWindowStateChanged("com.unmapped.app")
+        assertTrue(engine.handleWindowStateChanged("uk.co.bbc.iplayer") is InterceptionOutcome.Intercepted)
+        assertEquals(2, forceStopper.stoppedPackages.size)
+    }
 }
